@@ -5,7 +5,7 @@
  * Environment Variable: GAS_API_URL
  */
 
-const FALLBACK_GAS_URL = "https://script.google.com/macros/s/AKfycbzRH-WUzVnkjOQheHIxBv6916lkCZMkvDV7e7DpI_l5aD06qWttWihxCk-a77KljGQp/exec";
+const FALLBACK_GAS_URL = "https://script.google.com/macros/s/AKfycbzeppJXfuADm7ccEGAFB-Czp2i4otE8knr05dxLyMI17CkTVnpVySzCzKXAeSG5kAdS/exec";
 
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
