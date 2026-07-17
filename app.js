@@ -487,7 +487,34 @@
     const tool = data.tool;
     return `<section class="tool-detail-stack">
       <div class="section-head"><div><h2>Dengarkan Contoh Hasil</h2><p>Bukti hasil ditempatkan di awal sebagai hook utama.</p></div></div>
-      <div class="sample-grid">${data.samples?.length ? data.samples.map(sample => `<article class="card sample-card"><div class="sample-icon">${icons.headphones}</div><div><h3>${escapeHtml(sample.title)}</h3><p>${escapeHtml(sample.description)}</p>${sample.media_url ? sample.media_type === "VIDEO" ? `<a class="btn btn-outline" href="${escapeHtml(sample.media_url)}" target="_blank" rel="noopener">Tonton Contoh</a>` : `<audio controls preload="none" src="${escapeHtml(sample.media_url)}"></audio>` : `<span class="sample-placeholder">Link contoh belum diisi di TOOL_SAMPLES</span>`}</div></article>`).join("") : emptyState("Contoh hasil belum tersedia", "Tambahkan link audio/video pada sheet TOOL_SAMPLES.")}</div>
+      <div class="sample-grid">${data.samples?.length ? data.samples.map((sample, sampleIndex) => `<article class="card sample-card">
+        <div class="sample-card-head">
+          <div class="sample-icon">${icons.headphones}</div>
+          <div class="sample-copy">
+            <span class="sample-label">CONTOH HASIL ${String(sampleIndex + 1).padStart(2, "0")}</span>
+            <h3>${escapeHtml(sample.title)}</h3>
+            <p>${escapeHtml(sample.description)}</p>
+          </div>
+        </div>
+        ${sample.media_url ? sample.media_type === "VIDEO" ? `
+          <a class="sample-video-button" href="${escapeHtml(sample.media_url)}" target="_blank" rel="noopener">
+            <span class="sample-video-icon">${icons.play}</span>
+            <span><strong>Tonton Contoh</strong><small>Buka video di YouTube</small></span>
+            ${icons.arrow}
+          </a>` : `
+          <div class="premium-audio-player" data-audio-player>
+            <audio preload="metadata" src="${escapeHtml(sample.media_url)}"></audio>
+            <button type="button" class="audio-play-button" data-audio-play aria-label="Putar audio">▶</button>
+            <div class="audio-player-main">
+              <div class="audio-player-topline">
+                <span class="audio-status" data-audio-status>Siap diputar</span>
+                <span class="audio-duration"><span data-audio-current>0:00</span> / <span data-audio-total>0:00</span></span>
+              </div>
+              <input class="audio-progress" data-audio-progress type="range" min="0" max="100" value="0" step="0.1" aria-label="Posisi audio" />
+              <div class="audio-wave" aria-hidden="true">${Array.from({length: 18}, (_, i) => `<i style="--bar:${(i % 6) + 1}"></i>`).join("")}</div>
+            </div>
+          </div>` : `<span class="sample-placeholder">Link contoh belum diisi di TOOL_SAMPLES</span>`}
+      </article>`).join("") : emptyState("Contoh hasil belum tersedia", "Tambahkan link audio/video pada sheet TOOL_SAMPLES.")}</div>
       <div class="info-split"><section class="card card-pad"><h2>Manfaat Utama</h2><div class="benefit-list">${(tool.benefits || []).map(item => `<div><span>✓</span><p>${escapeHtml(item)}</p></div>`).join("")}</div></section><section class="card card-pad"><h2>Cocok Untuk Siapa?</h2><div class="benefit-list audience">${(tool.audience || []).map(item => `<div><span>•</span><p>${escapeHtml(item)}</p></div>`).join("")}</div></section></div>
       <section class="card purchase-banner"><div><span class="hero-kicker">PROMO TERBATAS</span><h2>Dapatkan MRZ Voice Over Pro sekarang.</h2><p>Harga normal <del>${formatCurrency(tool.original_price)}</del>, sekarang hanya <strong>${formatCurrency(tool.sale_price)}</strong>.</p></div>${tool.has_access ? `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools ${icons.arrow}</button>` : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">Buat Pesanan ${icons.cart}</button>`}</section>
     </section>`;
@@ -990,7 +1017,100 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function formatAudioTime(seconds) {
+    const value = Number(seconds || 0);
+    if (!Number.isFinite(value) || value < 0) return "0:00";
+    const minutes = Math.floor(value / 60);
+    const remaining = Math.floor(value % 60);
+    return `${minutes}:${String(remaining).padStart(2, "0")}`;
+  }
+
+  function bindSampleAudioPlayers() {
+    const players = [...document.querySelectorAll("[data-audio-player]")];
+
+    players.forEach(player => {
+      const audio = player.querySelector("audio");
+      const playButton = player.querySelector("[data-audio-play]");
+      const progress = player.querySelector("[data-audio-progress]");
+      const current = player.querySelector("[data-audio-current]");
+      const total = player.querySelector("[data-audio-total]");
+      const status = player.querySelector("[data-audio-status]");
+
+      if (!audio || !playButton || !progress) return;
+
+      const updateDuration = () => {
+        total.textContent = formatAudioTime(audio.duration);
+      };
+
+      const updateProgress = () => {
+        const percent = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+        progress.value = String(percent);
+        progress.style.setProperty("--audio-progress", `${percent}%`);
+        current.textContent = formatAudioTime(audio.currentTime);
+      };
+
+      const setPlayingState = playing => {
+        player.classList.toggle("is-playing", playing);
+        playButton.textContent = playing ? "❚❚" : "▶";
+        playButton.setAttribute("aria-label", playing ? "Jeda audio" : "Putar audio");
+        status.textContent = playing ? "Sedang diputar" : audio.currentTime > 0 ? "Dijeda" : "Siap diputar";
+      };
+
+      audio.addEventListener("loadedmetadata", updateDuration);
+      audio.addEventListener("durationchange", updateDuration);
+      audio.addEventListener("timeupdate", updateProgress);
+      audio.addEventListener("ended", () => {
+        audio.currentTime = 0;
+        updateProgress();
+        setPlayingState(false);
+        status.textContent = "Selesai diputar";
+      });
+      audio.addEventListener("error", () => {
+        status.textContent = "Audio gagal dimuat";
+        player.classList.add("has-error");
+      });
+
+      playButton.addEventListener("click", async () => {
+        if (audio.paused) {
+          players.forEach(otherPlayer => {
+            if (otherPlayer === player) return;
+            const otherAudio = otherPlayer.querySelector("audio");
+            if (otherAudio && !otherAudio.paused) {
+              otherAudio.pause();
+              otherPlayer.classList.remove("is-playing");
+              const otherButton = otherPlayer.querySelector("[data-audio-play]");
+              const otherStatus = otherPlayer.querySelector("[data-audio-status]");
+              if (otherButton) otherButton.textContent = "▶";
+              if (otherStatus) otherStatus.textContent = "Dijeda";
+            }
+          });
+
+          try {
+            await audio.play();
+            setPlayingState(true);
+          } catch {
+            status.textContent = "Klik lagi untuk memutar";
+          }
+        } else {
+          audio.pause();
+          setPlayingState(false);
+        }
+      });
+
+      progress.addEventListener("input", () => {
+        if (!audio.duration) return;
+        const percent = Number(progress.value || 0);
+        audio.currentTime = (percent / 100) * audio.duration;
+        updateProgress();
+      });
+
+      updateDuration();
+      updateProgress();
+    });
+  }
+
   function bindAppEvents() {
+    bindSampleAudioPlayers();
     document.querySelectorAll("[data-view]").forEach(node => node.addEventListener("click", () => changeView(node.dataset.view)));
     document.querySelectorAll("[data-open-tool]").forEach(node => node.addEventListener("click", () => changeView(`tool:${node.dataset.openTool}`)));
     document.querySelectorAll("[data-tool-tab]").forEach(node => node.addEventListener("click", () => { state.toolTab = node.dataset.toolTab; renderApp(); }));
