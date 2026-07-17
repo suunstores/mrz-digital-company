@@ -32,7 +32,15 @@
     selectedNoteModule: "",
     moduleSearch: "",
     sidebarOpen: false,
-    busyModules: new Set()
+    busyModules: new Set(),
+    adminTab: "orders",
+    adminLoading: false,
+    adminData: {
+      summary: {},
+      orders: [],
+      accesses: [],
+      tools: []
+    }
   };
 
   const app = document.getElementById("app");
@@ -334,7 +342,7 @@
               <div class="nav-label">Materi Belajar</div>
               ${zoneNav || `<div class="small muted" style="padding:10px">Belum ada modul.</div>`}
             </div>
-            ${state.user?.role === "ADMIN" ? `<div class="nav-group"><div class="nav-label">Administrator</div>${navItem("admin", "Kelola Member", icons.users)}</div>` : ""}
+            ${state.user?.role === "ADMIN" ? `<div class="nav-group"><div class="nav-label">Administrator</div>${navItem("admin", "Pesanan & Akses", icons.users)}</div>` : ""}
             <div class="nav-group">
               <div class="nav-label">Komunitas & Bantuan</div>
               <button class="nav-item" data-external="telegram"><span class="nav-icon">${icons.telegram}</span><span>Grup Telegram</span></button>
@@ -373,7 +381,7 @@
       return zone ? `Zona ${zone.zone_no} · ${zone.zone_name}` : "Materi";
     }
     if (state.currentView.startsWith("tool:")) return state.currentToolDetail?.tool?.tool_name || "Detail Tools";
-    return ({ home: "Beranda", tools: "Produk & Tools", checklist: "Checklist Onboarding", schedule: "Jadwal Konsultasi", notes: "Catatan Saya", admin: "Kelola Member" })[state.currentView] || "Beranda";
+    return ({ home: "Beranda", tools: "Produk & Tools", checklist: "Checklist Onboarding", schedule: "Jadwal Konsultasi", notes: "Catatan Saya", admin: "Pesanan & Akses" })[state.currentView] || "Beranda";
   }
 
   function renderCurrentView() {
@@ -573,22 +581,131 @@
 
   function renderAdmin() {
     if (state.user?.role !== "ADMIN") return emptyState("Akses ditolak", "Halaman ini khusus administrator.");
+
+    const summary = state.adminData.summary || {};
+    const tab = state.adminTab;
+
     return `
-      <div class="page-head"><div><h1>Kelola Member</h1><p>Buat akun member langsung dari dashboard admin.</p></div><button class="btn btn-outline" id="refresh-admin">Muat Ringkasan</button></div>
-      <section id="admin-summary" class="grid grid-4" style="margin-bottom:18px">
-        ${[1,2,3,4].map(() => `<div class="card stat-card"><div class="skeleton" style="width:48px;height:48px"></div><div style="flex:1"><div class="skeleton" style="height:10px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:24px;width:40%"></div></div></div>`).join("")}
+      <div class="page-head admin-page-head">
+        <div>
+          <h1>Pesanan & Akses</h1>
+          <p>Konfirmasi pembayaran, kelola akses tools, dan reset perangkat member.</p>
+        </div>
+        <button class="btn btn-outline" id="refresh-admin">${state.adminLoading ? "Memuat..." : "Muat Ulang"}</button>
+      </div>
+
+      <section class="grid grid-4 admin-summary-grid" style="margin-bottom:18px">
+        ${statCard(icons.cart, "Pesanan Pending", summary.pending_orders || 0)}
+        ${statCard(icons.check, "Pesanan Dibayar", summary.paid_orders || 0)}
+        ${statCard(icons.lock, "Akses Aktif", summary.active_access || 0)}
+        ${statCard(icons.users, "Perangkat Terikat", summary.bound_devices || 0)}
       </section>
-      <section class="card card-pad"><div class="section-head" style="margin-top:0"><div><h2>Buat Akun Baru</h2><p>Password sementara minimal 8 karakter.</p></div></div>
-        <form id="admin-create-form" class="admin-form">
-          <div><label>Nama Member</label><input name="name" required placeholder="Nama lengkap" /></div>
-          <div><label>Email</label><input name="email" required type="email" placeholder="member@email.com" /></div>
-          <div><label>Password Sementara</label><input name="temporary_password" required type="password" minlength="8" placeholder="Minimal 8 karakter" /></div>
-          <div><label>Paket</label><select name="package"><option>FREE</option><option>STANDARD</option><option>REGULER</option><option>VIP</option><option>OWNER</option></select></div>
-          <div><label>Role</label><select name="role"><option>MEMBER</option><option>ADMIN</option></select></div>
-          <div><label>Masa Aktif Sampai</label><input name="expires_at" type="date" /></div>
-          <div class="full" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${icons.users} Buat Akun</button></div>
-        </form>
-      </section>`;
+
+      <nav class="admin-tabs card">
+        <button class="admin-tab ${tab === "orders" ? "active" : ""}" data-admin-tab="orders">Pesanan</button>
+        <button class="admin-tab ${tab === "access" ? "active" : ""}" data-admin-tab="access">Akses Tools</button>
+        <button class="admin-tab ${tab === "members" ? "active" : ""}" data-admin-tab="members">Buat Member</button>
+      </nav>
+
+      ${tab === "orders" ? renderAdminOrders() : tab === "access" ? renderAdminAccess() : renderAdminMembers()}`;
+  }
+
+  function adminStatusBadge(status) {
+    const value = String(status || "").toUpperCase();
+    const className = value === "PAID" || value === "ACTIVE"
+      ? "success"
+      : value === "PENDING"
+        ? "warning"
+        : "danger";
+    return `<span class="admin-status ${className}">${escapeHtml(value || "-")}</span>`;
+  }
+
+  function renderAdminOrders() {
+    const rows = Array.isArray(state.adminData.orders) ? state.adminData.orders : [];
+
+    if (state.adminLoading && !rows.length) {
+      return `<section class="card admin-loading"><div class="loader"></div><p>Memuat pesanan...</p></section>`;
+    }
+
+    if (!rows.length) return emptyState("Belum ada pesanan", "Pesanan member akan tampil di bagian ini.");
+
+    return `<section class="card admin-table-card">
+      <div class="admin-table-head">
+        <div><h2>Daftar Pesanan</h2><p>Konfirmasi hanya setelah pembayaran benar-benar diterima.</p></div>
+        <span>${rows.length} data terbaru</span>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Invoice</th><th>Member</th><th>Tools</th><th>Total</th><th>Status</th><th>Dibuat</th><th>Aksi</th></tr></thead>
+          <tbody>${rows.map(order => `
+            <tr>
+              <td><strong>${escapeHtml(order.invoice_number)}</strong><small>${escapeHtml(order.order_id)}</small></td>
+              <td><strong>${escapeHtml(order.customer_name)}</strong><small>${escapeHtml(order.email)}</small></td>
+              <td>${escapeHtml(order.tool_name || order.tool_id)}</td>
+              <td><strong>${formatCurrency(order.amount_paid)}</strong></td>
+              <td>${adminStatusBadge(order.status)}</td>
+              <td>${formatDate(order.created_at)}</td>
+              <td>${String(order.status).toUpperCase() === "PENDING"
+                ? `<button class="btn btn-primary admin-action" data-confirm-order="${escapeHtml(order.order_id)}" data-invoice="${escapeHtml(order.invoice_number)}">Konfirmasi Bayar</button>`
+                : `<span class="small muted">${order.paid_at ? `Dibayar ${formatDate(order.paid_at)}` : "Selesai"}</span>`}
+              </td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  function renderAdminAccess() {
+    const rows = Array.isArray(state.adminData.accesses) ? state.adminData.accesses : [];
+
+    if (state.adminLoading && !rows.length) {
+      return `<section class="card admin-loading"><div class="loader"></div><p>Memuat akses tools...</p></section>`;
+    }
+
+    if (!rows.length) return emptyState("Belum ada akses tools", "Akses akan muncul setelah pesanan dikonfirmasi PAID.");
+
+    return `<section class="card admin-table-card">
+      <div class="admin-table-head">
+        <div><h2>Akses Tools Member</h2><p>Aktifkan, nonaktifkan, atau reset perangkat dari dashboard.</p></div>
+        <span>${rows.length} akses</span>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Member</th><th>Tools</th><th>Paket</th><th>Status</th><th>Perangkat</th><th>Login Terakhir</th><th>Aksi</th></tr></thead>
+          <tbody>${rows.map(access => {
+            const active = String(access.status).toUpperCase() === "ACTIVE";
+            return `
+              <tr>
+                <td><strong>${escapeHtml(access.name)}</strong><small>${escapeHtml(access.email)}</small></td>
+                <td>${escapeHtml(access.tool_name || access.tool_id)}</td>
+                <td>${escapeHtml(access.plan || "LIFETIME")}</td>
+                <td>${adminStatusBadge(access.status)}</td>
+                <td><strong>${Number(access.device_count || 0)}/${Number(access.max_devices || 1)}</strong></td>
+                <td>${access.last_login_at ? formatDate(access.last_login_at) : "Belum login"}</td>
+                <td><div class="admin-action-group">
+                  <button class="btn ${active ? "btn-danger" : "btn-primary"} admin-action" data-access-status="${escapeHtml(access.access_id)}" data-next-status="${active ? "REVOKED" : "ACTIVE"}">${active ? "Nonaktifkan" : "Aktifkan"}</button>
+                  <button class="btn btn-outline admin-action" data-reset-device="${escapeHtml(access.access_id)}" ${Number(access.device_count || 0) < 1 ? "disabled" : ""}>Reset Device</button>
+                </div></td>
+              </tr>`;
+          }).join("")}</tbody>
+        </table>
+      </div>
+    </section>`;
+  }
+
+  function renderAdminMembers() {
+    return `<section class="card card-pad">
+      <div class="section-head" style="margin-top:0"><div><h2>Buat Akun Baru</h2><p>Password sementara minimal 8 karakter.</p></div></div>
+      <form id="admin-create-form" class="admin-form">
+        <div><label>Nama Member</label><input name="name" required placeholder="Nama lengkap" /></div>
+        <div><label>Email</label><input name="email" required type="email" placeholder="member@email.com" /></div>
+        <div><label>Password Sementara</label><input name="temporary_password" required type="password" minlength="8" placeholder="Minimal 8 karakter" /></div>
+        <div><label>Paket</label><select name="package"><option>FREE</option><option>STANDARD</option><option>REGULER</option><option>VIP</option><option>OWNER</option></select></div>
+        <div><label>Role</label><select name="role"><option>MEMBER</option><option>ADMIN</option></select></div>
+        <div><label>Masa Aktif Sampai</label><input name="expires_at" type="date" /></div>
+        <div class="full" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${icons.users} Buat Akun</button></div>
+      </form>
+    </section>`;
   }
 
   function emptyState(title, text) {
@@ -767,19 +884,78 @@
     }
   }
 
-  async function loadAdminSummary() {
-    const root = document.getElementById("admin-summary");
-    if (!root) return;
+  async function loadAdminOperations(showLoader = true) {
+    if (state.user?.role !== "ADMIN") return;
+    if (showLoader) state.adminLoading = true;
+    if (showLoader) renderApp();
+
     try {
-      const data = await api({ action: "adminSummary", token: state.token });
-      const s = data.summary || {};
-      root.innerHTML = [
-        statCard(icons.users, "Total User", s.total_users || 0),
-        statCard(icons.checklist, "User Aktif", s.active_users || 0),
-        statCard(icons.book, "Modul Terbit", s.published_modules || 0),
-        statCard(icons.check, "Total Penyelesaian", s.completed_modules || 0)
-      ].join("");
-    } catch (error) { root.innerHTML = emptyState("Ringkasan gagal dimuat", error.message); }
+      const data = await api({ action: "adminOperationsData", token: state.token });
+      state.adminData = {
+        summary: data.summary || {},
+        orders: Array.isArray(data.orders) ? data.orders : [],
+        accesses: Array.isArray(data.accesses) ? data.accesses : [],
+        tools: Array.isArray(data.tools) ? data.tools : []
+      };
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      state.adminLoading = false;
+      if (state.currentView === "admin") renderApp();
+    }
+  }
+
+  async function confirmAdminOrder(orderId, invoiceNumber) {
+    const accepted = window.confirm(`Konfirmasi pembayaran invoice ${invoiceNumber}?\n\nPastikan uang sudah benar-benar diterima.`);
+    if (!accepted) return;
+
+    try {
+      await api({
+        action: "adminMarkOrderPaid",
+        token: state.token,
+        order_id: orderId,
+        payment_method: "TRANSFER",
+        payment_reference: `ADMIN-${Date.now()}`
+      });
+      toast(`Invoice ${invoiceNumber} berhasil dikonfirmasi. Akses tools sudah aktif.`);
+      await loadAdminOperations(false);
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function changeAdminAccessStatus(accessId, status) {
+    const label = status === "ACTIVE" ? "mengaktifkan" : "menonaktifkan";
+    if (!window.confirm(`Yakin ingin ${label} akses tools ini?`)) return;
+
+    try {
+      await api({
+        action: "adminSetAccessStatus",
+        token: state.token,
+        access_id: accessId,
+        status
+      });
+      toast(status === "ACTIVE" ? "Akses berhasil diaktifkan." : "Akses berhasil dinonaktifkan.");
+      await loadAdminOperations(false);
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+
+  async function resetAdminToolDevice(accessId) {
+    if (!window.confirm("Reset perangkat user ini? User harus login ulang dari perangkatnya.")) return;
+
+    try {
+      await api({
+        action: "adminResetToolDevice",
+        token: state.token,
+        access_id: accessId
+      });
+      toast("Perangkat berhasil di-reset.");
+      await loadAdminOperations(false);
+    } catch (error) {
+      toast(error.message, "error");
+    }
   }
 
   async function createAdminUser(form) {
@@ -791,7 +967,7 @@
       await api({ action: "adminCreateUser", token: state.token, ...data });
       toast(`Akun ${data.email} berhasil dibuat.`);
       form.reset();
-      await loadAdminSummary();
+      await loadAdminOperations(false);
     } catch (error) { toast(error.message, "error"); }
     finally { button.disabled = false; button.innerHTML = `${icons.users} Buat Akun`; }
   }
@@ -809,7 +985,7 @@
       loadToolDetail(toolId);
     } else {
       renderApp();
-      if (view === "admin") loadAdminSummary();
+      if (view === "admin") loadAdminOperations(true);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -831,8 +1007,12 @@
     document.getElementById("mobile-menu")?.addEventListener("click", () => { state.sidebarOpen = !state.sidebarOpen; renderApp(); });
     document.getElementById("sidebar-overlay")?.addEventListener("click", () => { state.sidebarOpen = false; renderApp(); });
     document.getElementById("save-note")?.addEventListener("click", saveNote);
-    document.getElementById("refresh-admin")?.addEventListener("click", loadAdminSummary);
+    document.getElementById("refresh-admin")?.addEventListener("click", () => loadAdminOperations(true));
     document.getElementById("admin-create-form")?.addEventListener("submit", event => { event.preventDefault(); createAdminUser(event.currentTarget); });
+    document.querySelectorAll("[data-admin-tab]").forEach(node => node.addEventListener("click", () => { state.adminTab = node.dataset.adminTab; renderApp(); }));
+    document.querySelectorAll("[data-confirm-order]").forEach(node => node.addEventListener("click", () => confirmAdminOrder(node.dataset.confirmOrder, node.dataset.invoice)));
+    document.querySelectorAll("[data-access-status]").forEach(node => node.addEventListener("click", () => changeAdminAccessStatus(node.dataset.accessStatus, node.dataset.nextStatus)));
+    document.querySelectorAll("[data-reset-device]").forEach(node => node.addEventListener("click", () => resetAdminToolDevice(node.dataset.resetDevice)));
     const search = document.getElementById("module-search");
     search?.addEventListener("keydown", event => {
       if (event.key === "Enter") {
@@ -842,7 +1022,7 @@
         changeView("checklist");
       }
     });
-    if (state.currentView === "admin") loadAdminSummary();
+    if (state.currentView === "admin" && !state.adminLoading && !(state.adminData.orders || []).length) loadAdminOperations(true);
   }
 
   async function init() {
