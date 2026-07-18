@@ -507,12 +507,26 @@
             <p>${escapeHtml(sample.description)}</p>
           </div>
         </div>
-        ${sample.media_url ? sample.media_type === "VIDEO" ? `
-          <a class="sample-video-button" href="${escapeHtml(sample.media_url)}" target="_blank" rel="noopener">
-            <span class="sample-video-icon">${icons.play}</span>
-            <span><strong>Tonton Contoh</strong><small>Buka video di YouTube</small></span>
-            ${icons.arrow}
-          </a>` : `
+        ${sample.media_url ? sample.media_type === "VIDEO" ? (() => {
+          const embedUrl = youtubeEmbedUrl(sample.media_url);
+
+          return embedUrl ? `
+            <div style="position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:18px;background:#16090f">
+              <iframe
+                src="${escapeHtml(embedUrl)}"
+                title="${escapeHtml(sample.title)}"
+                loading="lazy"
+                style="position:absolute;inset:0;width:100%;height:100%;border:0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+              ></iframe>
+            </div>` : `
+            <a class="sample-video-button" href="${escapeHtml(sample.media_url)}" target="_blank" rel="noopener">
+              <span class="sample-video-icon">${icons.play}</span>
+              <span><strong>Tonton Contoh</strong><small>Buka video di YouTube</small></span>
+              ${icons.arrow}
+            </a>`;
+        })() : `
           <div class="premium-audio-player" data-audio-player>
             <audio preload="metadata" src="${escapeHtml(sample.media_url)}"></audio>
             <button type="button" class="audio-play-button" data-audio-play aria-label="Putar audio">▶</button>
