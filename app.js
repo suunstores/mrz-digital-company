@@ -26,6 +26,9 @@
     currentToolLoading: false,
     toolTab: "summary",
     authMode: "login",
+    resetToken: "",
+    resetEmail: "",
+    resetLinkValid: false,
     progress: { completed: 0, total: 0, percent: 0 },
     currentView: "home",
     selectedZone: "all",
@@ -199,6 +202,7 @@
     applyTheme();
     const isRegister = state.authMode === "register";
     const isForgot = state.authMode === "forgot";
+    const isResetLink = state.authMode === "reset-link";
     app.innerHTML = `
       <main class="login-shell">
         <section class="login-brand">
@@ -218,32 +222,110 @@
           <div class="login-card">
             <div class="logo-box compact" style="margin-bottom:20px">MRZ</div>
             <div class="auth-tabs">
-              <button type="button" class="auth-tab ${!isRegister && !isForgot ? "active" : ""}" data-auth-mode="login">Masuk</button>
+              <button type="button" class="auth-tab ${!isRegister && !isForgot && !isResetLink ? "active" : ""}" data-auth-mode="login">Masuk</button>
               <button type="button" class="auth-tab ${isRegister ? "active" : ""}" data-auth-mode="register">Daftar Gratis</button>
             </div>
-            <h2>${isForgot ? "Reset password" : isRegister ? "Buat akun gratis" : "Selamat datang"}</h2>
-            <p>${isForgot
-              ? "Masukkan email akun dan buat password baru. Fitur ini masih dalam mode uji coba."
-              : isRegister
-                ? "Daftar tanpa menghubungi admin. Akunmu otomatis aktif sebagai FREE."
-                : "Masukkan email dan password akunmu."}</p>
+            <h2>${
+              isResetLink
+                ? "Buat password baru"
+                : isForgot
+                  ? "Lupa password?"
+                  : isRegister
+                    ? "Buat akun gratis"
+                    : "Selamat datang"
+            }</h2>
+
+            <p>${
+              isResetLink
+                ? `Link reset valid untuk ${escapeHtml(state.resetEmail || "akunmu")}.`
+                : isForgot
+                  ? "Masukkan email akun. Link reset akan dikirim ke inbox."
+                  : isRegister
+                    ? "Daftar tanpa menghubungi admin. Akunmu otomatis aktif sebagai FREE."
+                    : "Masukkan email dan password akunmu."
+            }</p>
 
             <div id="login-error" class="form-error ${errorMessage ? "show" : ""}">${escapeHtml(errorMessage)}</div>
 
             <div
               id="login-success"
-              style="${successMessage
-                ? "display:block;margin-bottom:16px;padding:12px 14px;border:1px solid #b8dfc8;border-radius:12px;background:#edf9f2;color:#166534;font-size:13px;font-weight:700"
-                : "display:none"}"
+              style="${
+                successMessage
+                  ? "display:block;margin-bottom:16px;padding:12px 14px;border:1px solid #b8dfc8;border-radius:12px;background:#edf9f2;color:#166534;font-size:13px;font-weight:700"
+                  : "display:none"
+              }"
             >${escapeHtml(successMessage)}</div>
 
-            ${isForgot ? `
-              <form id="reset-password-form" autocomplete="off">
-                <div class="form-group"><label for="reset-email">Email akun</label><div class="input-wrap"><span class="input-icon">@</span><input id="reset-email" name="email" type="email" required placeholder="nama@email.com" autocomplete="email" /></div></div>
-                <div class="form-group"><label for="reset-password">Password baru</label><div class="input-wrap"><span class="input-icon">●</span><input id="reset-password" name="new_password" type="password" minlength="8" required placeholder="Minimal 8 karakter" autocomplete="new-password" style="padding-right:52px" /><button type="button" class="password-toggle" data-toggle-password="reset-password" aria-label="Tampilkan password">${icons.eye}</button></div></div>
-                <div class="form-group"><label for="reset-confirm-password">Ulangi password baru</label><div class="input-wrap"><span class="input-icon">●</span><input id="reset-confirm-password" name="confirm_password" type="password" minlength="8" required placeholder="Ketik ulang password baru" autocomplete="new-password" style="padding-right:52px" /><button type="button" class="password-toggle" data-toggle-password="reset-confirm-password" aria-label="Tampilkan password">${icons.eye}</button></div></div>
-                <button id="reset-password-button" type="submit" class="btn btn-primary btn-block">Reset Password ${icons.arrow}</button>
-                <button type="button" class="btn btn-outline btn-block" data-auth-mode="login" style="margin-top:10px">Kembali ke Login</button>
+            ${isResetLink ? `
+              <form id="reset-link-form" autocomplete="off">
+                <div class="form-group">
+                  <label for="reset-new-password">Password baru</label>
+                  <div class="input-wrap">
+                    <span class="input-icon">●</span>
+                    <input
+                      id="reset-new-password"
+                      name="new_password"
+                      type="password"
+                      minlength="8"
+                      required
+                      placeholder="Minimal 8 karakter"
+                      autocomplete="new-password"
+                      style="padding-right:52px"
+                    />
+                    <button type="button" class="password-toggle" data-toggle-password="reset-new-password" aria-label="Tampilkan password">${icons.eye}</button>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="reset-confirm-password">Ulangi password baru</label>
+                  <div class="input-wrap">
+                    <span class="input-icon">●</span>
+                    <input
+                      id="reset-confirm-password"
+                      name="confirm_password"
+                      type="password"
+                      minlength="8"
+                      required
+                      placeholder="Ketik ulang password baru"
+                      autocomplete="new-password"
+                      style="padding-right:52px"
+                    />
+                    <button type="button" class="password-toggle" data-toggle-password="reset-confirm-password" aria-label="Tampilkan password">${icons.eye}</button>
+                  </div>
+                </div>
+
+                <button id="reset-link-button" type="submit" class="btn btn-primary btn-block">
+                  Simpan Password Baru ${icons.arrow}
+                </button>
+              </form>` : isForgot ? `
+              <form id="forgot-password-form" autocomplete="on">
+                <div class="form-group">
+                  <label for="forgot-email">Email akun</label>
+                  <div class="input-wrap">
+                    <span class="input-icon">@</span>
+                    <input
+                      id="forgot-email"
+                      name="email"
+                      type="email"
+                      required
+                      placeholder="nama@email.com"
+                      autocomplete="email"
+                    />
+                  </div>
+                </div>
+
+                <button id="forgot-password-button" type="submit" class="btn btn-primary btn-block">
+                  Kirim Link Reset ${icons.arrow}
+                </button>
+
+                <button
+                  type="button"
+                  class="btn btn-outline btn-block"
+                  data-auth-mode="login"
+                  style="margin-top:10px"
+                >
+                  Kembali ke Login
+                </button>
               </form>` : isRegister ? `
               <form id="register-form" autocomplete="on">
                 <div class="form-group"><label for="reg-name">Nama</label><div class="input-wrap"><span class="input-icon">●</span><input id="reg-name" name="name" required minlength="2" placeholder="Nama lengkap" /></div></div>
@@ -256,18 +338,36 @@
                 <div class="form-group"><label for="email">Email</label><div class="input-wrap"><span class="input-icon">@</span><input id="email" name="email" type="email" placeholder="nama@email.com" required autocomplete="username" /></div></div>
                 <div class="form-group"><label for="password">Password</label><div class="input-wrap"><span class="input-icon">●</span><input id="password" name="password" type="password" placeholder="Minimal 8 karakter" required autocomplete="current-password" style="padding-right:52px" /><button type="button" class="password-toggle" data-toggle-password="password" aria-label="Tampilkan password">${icons.eye}</button></div></div>
                 <button id="login-button" type="submit" class="btn btn-primary btn-block">Masuk ke Member Area ${icons.arrow}</button>
-                <button type="button" data-auth-mode="forgot" style="display:block;width:100%;margin-top:14px;border:0;background:transparent;color:var(--primary);font-size:13px;font-weight:800;cursor:pointer">Lupa Password?</button>
+                <button
+                  type="button"
+                  data-auth-mode="forgot"
+                  style="display:block;width:100%;margin-top:14px;border:0;background:transparent;color:var(--primary);font-size:13px;font-weight:800;cursor:pointer"
+                >
+                  Lupa Password?
+                </button>
               </form>`}
 
-            <p class="login-help">${isForgot
-              ? "Mode uji coba: reset dilakukan langsung melalui email akun tanpa OTP."
-              : "Akun FREE dapat melihat semua produk dan contoh hasil.<br/>Tools premium tetap terkunci sampai akses dibeli."}</p>
+            <p class="login-help">${
+              isForgot
+                ? "Link reset dikirim ke inbox dan hanya dapat digunakan sekali."
+                : isResetLink
+                  ? "Setelah password berhasil diubah, link ini otomatis tidak dapat digunakan lagi."
+                  : "Akun FREE dapat melihat semua produk dan contoh hasil.<br/>Tools premium tetap terkunci sampai akses dibeli."
+            }</p>
           </div>
         </section>
       </main>`;
 
     document.querySelectorAll("[data-auth-mode]").forEach(button => button.addEventListener("click", () => {
       state.authMode = button.dataset.authMode;
+
+      if (state.authMode === "login" || state.authMode === "register") {
+        state.resetToken = "";
+        state.resetEmail = "";
+        state.resetLinkValid = false;
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+
       renderLogin();
     }));
     document.querySelectorAll("[data-toggle-password]").forEach(button => button.addEventListener("click", event => {
@@ -299,10 +399,40 @@
       }
     });
 
-    document.getElementById("reset-password-form")?.addEventListener("submit", async event => {
+    document.getElementById("forgot-password-form")?.addEventListener("submit", async event => {
       event.preventDefault();
+
       const form = event.currentTarget;
-      const button = document.getElementById("reset-password-button");
+      const button = document.getElementById("forgot-password-button");
+      const errorBox = document.getElementById("login-error");
+
+      errorBox.classList.remove("show");
+      button.disabled = true;
+      button.textContent = "Mengirim link...";
+
+      try {
+        const data = await api({
+          action: "requestPasswordReset",
+          email: form.email.value.trim()
+        });
+
+        renderLogin(
+          "",
+          data.message || "Jika email terdaftar, link reset akan dikirim ke inbox."
+        );
+      } catch (error) {
+        errorBox.textContent = error.message;
+        errorBox.classList.add("show");
+        button.disabled = false;
+        button.innerHTML = `Kirim Link Reset ${icons.arrow}`;
+      }
+    });
+
+    document.getElementById("reset-link-form")?.addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const form = event.currentTarget;
+      const button = document.getElementById("reset-link-button");
       const errorBox = document.getElementById("login-error");
       const newPassword = form.new_password.value;
       const confirmPassword = form.confirm_password.value;
@@ -316,23 +446,31 @@
       }
 
       button.disabled = true;
-      button.textContent = "Mengubah password...";
+      button.textContent = "Menyimpan password...";
 
       try {
         const data = await api({
-          action: "resetPasswordDirect",
-          email: form.email.value.trim(),
+          action: "resetPasswordByToken",
+          reset_token: state.resetToken,
           new_password: newPassword,
           confirm_password: confirmPassword
         });
 
         state.authMode = "login";
-        renderLogin("", data.message || "Password berhasil diubah. Silakan login menggunakan password baru.");
+        state.resetToken = "";
+        state.resetEmail = "";
+        state.resetLinkValid = false;
+        window.history.replaceState({}, "", window.location.pathname);
+
+        renderLogin(
+          "",
+          data.message || "Password berhasil diubah. Silakan login."
+        );
       } catch (error) {
         errorBox.textContent = error.message;
         errorBox.classList.add("show");
         button.disabled = false;
-        button.innerHTML = `Reset Password ${icons.arrow}`;
+        button.innerHTML = `Simpan Password Baru ${icons.arrow}`;
       }
     });
 
@@ -1486,6 +1624,34 @@
   }
 
   async function init() {
+    const resetToken = new URLSearchParams(window.location.search).get("reset_token");
+
+    if (resetToken) {
+      state.authMode = "reset-link";
+      state.resetToken = resetToken;
+      renderLoading();
+
+      try {
+        const data = await api({
+          action: "verifyPasswordResetToken",
+          reset_token: resetToken
+        });
+
+        state.resetEmail = data.email || "";
+        state.resetLinkValid = true;
+        renderLogin("", data.message || "Link valid. Silakan buat password baru.");
+      } catch (error) {
+        state.authMode = "login";
+        state.resetToken = "";
+        state.resetEmail = "";
+        state.resetLinkValid = false;
+        window.history.replaceState({}, "", window.location.pathname);
+        renderLogin(error.message);
+      }
+
+      return;
+    }
+
     if (loadSession()) await bootstrap(true);
     else renderLogin();
   }
