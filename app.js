@@ -72,7 +72,8 @@
     headphones: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M18 19h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2h-1zM6 19H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1z"/></svg>`,
     video: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="14" height="14" rx="3"/><path d="m17 10 4-2v8l-4-2z"/><path d="m9 9 4 3-4 3z" fill="currentColor" stroke="none"/></svg>`,
     userCircle: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>`,
-    cart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M3 4h2l2.6 10.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.6L21 8H7"/></svg>`
+    cart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M3 4h2l2.6 10.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.6L21 8H7"/></svg>`,
+    whatsapp: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.8 7.4L3 20.5l1.4-4.6A8.5 8.5 0 1 1 20.5 11.7Z"/><path d="M8.2 7.8c.2-.5.5-.5.8-.5h.5c.2 0 .4.1.5.4l.8 1.9c.1.3 0 .5-.1.7l-.6.8c-.2.2-.1.4 0 .6.8 1.4 1.9 2.5 3.4 3.2.2.1.4.1.6-.1l.9-1.1c.2-.2.4-.3.7-.2l1.9.9c.3.1.4.3.4.5 0 .3-.2 1.3-.8 1.8-.5.5-1.3.8-2 .8-.7 0-1.6-.2-2.6-.7-1.5-.7-2.8-1.7-3.9-3-1-1.1-1.8-2.4-2.1-3.4-.3-.9-.1-1.8.3-2.6.2-.4.6-.8 1.3-.8Z"/></svg>`
   };
 
   function escapeHtml(value) {
@@ -987,26 +988,158 @@
     }
   }
 
+  function normalizeWhatsAppNumber(value) {
+    let phone = String(value || "").replace(/\D/g, "");
+    if (!phone) return "";
+    if (phone.startsWith("0")) phone = `62${phone.slice(1)}`;
+    if (phone.startsWith("8")) phone = `62${phone}`;
+    return phone;
+  }
+
+  function openPaymentWhatsApp(invoiceNumber, amount, customerPhone) {
+    const adminPhone = normalizeWhatsAppNumber(
+      state.settings.PAYMENT_WHATSAPP || state.settings.MENTOR_WHATSAPP
+    );
+
+    if (!adminPhone) {
+      toast("Nomor WhatsApp pembayaran belum diatur oleh admin.", "error");
+      return;
+    }
+
+    const message = [
+      "Halo Admin MRZ Digital, saya ingin konfirmasi pembayaran.",
+      "",
+      `Nomor Booking: ${invoiceNumber}`,
+      `Total: ${formatCurrency(amount)}`,
+      `Nama: ${state.user?.name || "-"}`,
+      `Email: ${state.user?.email || "-"}`,
+      `WhatsApp: ${customerPhone || state.user?.phone || "-"}`,
+      "",
+      "Saya akan mengirim bukti pembayaran melalui chat ini. Mohon diperiksa dan diaktifkan aksesnya."
+    ].join("\n");
+
+    window.open(
+      `https://wa.me/${adminPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+      "noopener"
+    );
+  }
+
   function startPurchase(toolId) {
     const tool = state.currentToolDetail?.tool || state.tools.find(item => item.tool_id === toolId);
     if (!tool) return;
+
     const modal = document.createElement("div");
     modal.className = "modal-backdrop";
     modal.id = "purchase-modal";
-    modal.innerHTML = `<section class="modal purchase-modal"><header class="modal-head"><div><span class="small muted">CHECKOUT MRZ DIGITAL</span><h2>${escapeHtml(tool.tool_name)}</h2></div><button class="icon-button" data-close-modal>${icons.close}</button></header><div class="modal-body purchase-body"><div class="checkout-summary"><img src="${escapeHtml(tool.thumbnail_url || "/assets/mrz-voice-over-pro.png")}" alt=""><div><del>${formatCurrency(tool.original_price)}</del><strong>${formatCurrency(tool.sale_price)}</strong><p>Sekali bayar · akses modul premium dan tools</p></div></div><form id="purchase-form"><div class="form-group"><label>Nomor WhatsApp</label><div class="input-wrap"><span class="input-icon">+</span><input name="phone" inputmode="tel" required value="${escapeHtml(state.user?.phone || "")}" placeholder="08xxxxxxxxxx"></div></div><div class="checkout-note">Pesanan otomatis masuk ke sheet <strong>ORDERS</strong>. Pembayaran otomatis akan aktif setelah payment gateway disambungkan.</div><button class="btn btn-accent btn-block" type="submit">Buat Pesanan ${icons.cart}</button></form><div id="order-result"></div></div></section>`;
+
+    modal.innerHTML = `<section class="modal purchase-modal">
+      <header class="modal-head">
+        <div>
+          <span class="small muted">CHECKOUT MRZ DIGITAL</span>
+          <h2>${escapeHtml(tool.tool_name)}</h2>
+        </div>
+        <button class="icon-button" data-close-modal>${icons.close}</button>
+      </header>
+
+      <div class="modal-body purchase-body">
+        <div class="checkout-summary">
+          <img src="${escapeHtml(tool.thumbnail_url || "/assets/mrz-voice-over-pro.png")}" alt="">
+          <div>
+            <del>${formatCurrency(tool.original_price)}</del>
+            <strong>${formatCurrency(tool.sale_price)}</strong>
+            <p>Sekali bayar · akses modul premium dan tools</p>
+          </div>
+        </div>
+
+        <form id="purchase-form">
+          <div class="form-group">
+            <label>Nomor WhatsApp Anda</label>
+            <div class="input-wrap">
+              <span class="input-icon">+</span>
+              <input
+                name="phone"
+                inputmode="tel"
+                required
+                value="${escapeHtml(state.user?.phone || "")}"
+                placeholder="08xxxxxxxxxx"
+              >
+            </div>
+          </div>
+
+          <div class="checkout-note">
+            Setelah nomor booking dibuat, lakukan pembayaran lalu kirim bukti melalui WhatsApp agar admin dapat memeriksa dan mengaktifkan akses.
+          </div>
+
+          <button class="btn btn-accent btn-block" type="submit">
+            Buat Pesanan ${icons.cart}
+          </button>
+        </form>
+
+        <div id="order-result"></div>
+      </div>
+    </section>`;
+
     document.body.appendChild(modal);
-    modal.addEventListener("click", event => { if (event.target === modal || event.target.closest("[data-close-modal]")) modal.remove(); });
+
+    modal.addEventListener("click", event => {
+      if (event.target === modal || event.target.closest("[data-close-modal]")) {
+        modal.remove();
+      }
+    });
+
     modal.querySelector("#purchase-form").addEventListener("submit", async event => {
       event.preventDefault();
+
       const form = event.currentTarget;
       const button = form.querySelector("button");
+      const customerPhone = form.phone.value.trim();
+
       button.disabled = true;
-      button.textContent = "Membuat pesanan...";
+      button.textContent = "Membuat nomor booking...";
+
       try {
-        const data = await api({ action: "createOrder", token: state.token, tool_id: toolId, phone: form.phone.value });
-        modal.querySelector("#order-result").innerHTML = `<div class="order-success"><span>✓</span><h3>Pesanan berhasil dibuat</h3><p>Invoice: <strong>${escapeHtml(data.order.invoice_number)}</strong></p><p>Total: <strong>${formatCurrency(data.order.amount)}</strong></p><small>Status ${escapeHtml(data.order.status)}. Data sudah masuk ke Spreadsheet.</small></div>`;
+        const data = await api({
+          action: "createOrder",
+          token: state.token,
+          tool_id: toolId,
+          phone: customerPhone
+        });
+
+        const invoiceNumber = data.order.invoice_number;
+        const orderAmount = data.order.amount;
+
+        modal.querySelector("#order-result").innerHTML = `
+          <div class="order-success">
+            <span>✓</span>
+            <h3>Nomor Booking Berhasil Dibuat</h3>
+            <p>Nomor Booking: <strong>${escapeHtml(invoiceNumber)}</strong></p>
+            <p>Total Pembayaran: <strong>${formatCurrency(orderAmount)}</strong></p>
+
+            <button
+              type="button"
+              class="btn btn-block"
+              data-payment-whatsapp
+              style="margin-top:18px;background:#168a4f;color:#fff;border-color:#168a4f;display:flex;align-items:center;justify-content:center;gap:9px"
+            >
+              ${icons.whatsapp}
+              Konfirmasi & Kirim Bukti via WhatsApp
+            </button>
+
+            <small>
+              Setelah mengirim bukti, admin akan memeriksa pembayaran dan mengaktifkan akses dari dashboard.
+            </small>
+          </div>`;
+
         form.style.display = "none";
-        toast(data.message || "Pesanan berhasil dibuat.");
+
+        modal
+          .querySelector("[data-payment-whatsapp]")
+          ?.addEventListener("click", () => {
+            openPaymentWhatsApp(invoiceNumber, orderAmount, customerPhone);
+          });
+
+        toast("Nomor booking berhasil dibuat.");
       } catch (error) {
         toast(error.message, "error");
         button.disabled = false;
