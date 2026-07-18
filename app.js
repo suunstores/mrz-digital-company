@@ -556,6 +556,7 @@
             <div class="profile-mini">
               <div class="avatar">${initials(state.user?.name)}</div>
               <div style="min-width:0;flex:1"><strong>${escapeHtml(state.user?.name)}</strong><span>${escapeHtml(state.user?.package || "MEMBER")}</span></div>
+              <button class="icon-button" id="change-password-button" title="Ganti Password">${icons.lock}</button>
               <button class="icon-button" id="logout-button" title="Keluar">${icons.logout}</button>
             </div>
           </div>
@@ -1348,6 +1349,195 @@
     });
   }
 
+  function openChangePasswordModal() {
+    const modal = document.createElement("div");
+    modal.className = "modal-backdrop";
+    modal.id = "change-password-modal";
+
+    modal.innerHTML = `
+      <section class="modal" style="max-width:560px">
+        <header class="modal-head">
+          <div>
+            <span class="small muted">KEAMANAN AKUN</span>
+            <h2>Ganti Password</h2>
+          </div>
+          <button class="icon-button" data-close-modal aria-label="Tutup">${icons.close}</button>
+        </header>
+
+        <div class="modal-body">
+          <p class="muted" style="margin-top:0">
+            Masukkan password saat ini, lalu buat password baru minimal 8 karakter.
+          </p>
+
+          <div id="change-password-error" class="form-error"></div>
+
+          <form id="change-password-form" autocomplete="off">
+            <div class="form-group">
+              <label for="current-password">Password saat ini</label>
+              <div class="input-wrap">
+                <span class="input-icon">●</span>
+                <input
+                  id="current-password"
+                  name="current_password"
+                  type="password"
+                  required
+                  placeholder="Masukkan password saat ini"
+                  autocomplete="current-password"
+                  style="padding-right:52px"
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  data-change-toggle="current-password"
+                  aria-label="Tampilkan password"
+                >${icons.eye}</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="account-new-password">Password baru</label>
+              <div class="input-wrap">
+                <span class="input-icon">●</span>
+                <input
+                  id="account-new-password"
+                  name="new_password"
+                  type="password"
+                  minlength="8"
+                  required
+                  placeholder="Minimal 8 karakter"
+                  autocomplete="new-password"
+                  style="padding-right:52px"
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  data-change-toggle="account-new-password"
+                  aria-label="Tampilkan password"
+                >${icons.eye}</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="account-confirm-password">Ulangi password baru</label>
+              <div class="input-wrap">
+                <span class="input-icon">●</span>
+                <input
+                  id="account-confirm-password"
+                  name="confirm_password"
+                  type="password"
+                  minlength="8"
+                  required
+                  placeholder="Ketik ulang password baru"
+                  autocomplete="new-password"
+                  style="padding-right:52px"
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  data-change-toggle="account-confirm-password"
+                  aria-label="Tampilkan password"
+                >${icons.eye}</button>
+              </div>
+            </div>
+
+            <button
+              id="save-change-password"
+              type="submit"
+              class="btn btn-primary btn-block"
+            >
+              Simpan Password Baru ${icons.arrow}
+            </button>
+          </form>
+
+          <p class="small muted" style="margin:16px 0 0;text-align:center">
+            Setelah berhasil, akun akan keluar otomatis dan kamu perlu login kembali.
+          </p>
+        </div>
+      </section>`;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+
+    modal.addEventListener("click", event => {
+      if (event.target === modal || event.target.closest("[data-close-modal]")) {
+        closeModal();
+      }
+    });
+
+    modal.querySelectorAll("[data-change-toggle]").forEach(button => {
+      button.addEventListener("click", event => {
+        const targetId = event.currentTarget.dataset.changeToggle;
+        const input = modal.querySelector(`#${targetId}`);
+        if (!input) return;
+
+        const visible = input.type === "text";
+        input.type = visible ? "password" : "text";
+        event.currentTarget.innerHTML = visible ? icons.eye : icons.eyeOff;
+      });
+    });
+
+    modal
+      .querySelector("#change-password-form")
+      ?.addEventListener("submit", async event => {
+        event.preventDefault();
+
+        const form = event.currentTarget;
+        const button = modal.querySelector("#save-change-password");
+        const errorBox = modal.querySelector("#change-password-error");
+
+        const currentPassword = form.current_password.value;
+        const newPassword = form.new_password.value;
+        const confirmPassword = form.confirm_password.value;
+
+        errorBox.classList.remove("show");
+        errorBox.textContent = "";
+
+        if (newPassword !== confirmPassword) {
+          errorBox.textContent = "Konfirmasi password baru tidak sama.";
+          errorBox.classList.add("show");
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Menyimpan password...";
+
+        try {
+          const data = await api({
+            action: "changePassword",
+            token: state.token,
+            current_password: currentPassword,
+            new_password: newPassword,
+            confirm_password: confirmPassword
+          });
+
+          closeModal();
+
+          localStorage.removeItem(STORAGE_KEY);
+          state.token = "";
+          state.user = null;
+          state.authMode = "login";
+          state.modules = [];
+          state.notes = [];
+          state.schedule = [];
+          state.announcements = [];
+          state.tools = [];
+          state.currentToolDetail = null;
+
+          renderLogin(
+            "",
+            data.message ||
+              "Password berhasil diubah. Silakan login kembali menggunakan password baru."
+          );
+        } catch (error) {
+          errorBox.textContent = error.message;
+          errorBox.classList.add("show");
+          button.disabled = false;
+          button.innerHTML = `Simpan Password Baru ${icons.arrow}`;
+        }
+      });
+  }
+
   async function toggleComplete(moduleId, forceComplete = null) {
     const module = state.modules.find(m => m.module_id === moduleId);
     if (!module || module.is_locked || state.busyModules.has(moduleId)) return;
@@ -1601,6 +1791,7 @@
     document.querySelectorAll("[data-complete-module]").forEach(node => node.addEventListener("click", () => toggleComplete(node.dataset.completeModule)));
     document.querySelectorAll("[data-note-module]").forEach(node => node.addEventListener("click", () => { state.selectedNoteModule = node.dataset.noteModule; renderApp(); }));
     document.querySelectorAll("[data-external]").forEach(node => node.addEventListener("click", () => openExternal(node.dataset.external)));
+    document.getElementById("change-password-button")?.addEventListener("click", openChangePasswordModal);
     document.getElementById("logout-button")?.addEventListener("click", () => logout(true));
     document.getElementById("mobile-menu")?.addEventListener("click", () => { state.sidebarOpen = !state.sidebarOpen; renderApp(); });
     document.getElementById("sidebar-overlay")?.addEventListener("click", () => { state.sidebarOpen = false; renderApp(); });
