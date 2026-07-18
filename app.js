@@ -70,6 +70,8 @@
     eyeOff: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 18 18M10.6 10.6A2 2 0 0 0 13.4 13.4M9.9 4.2A10 10 0 0 1 12 4c6 0 10 8 10 8a17 17 0 0 1-2 3M6.6 6.6C3.8 8.5 2 12 2 12s4 8 10 8a9.8 9.8 0 0 0 4.1-.9"/></svg>`,
     tools: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>`,
     headphones: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M18 19h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2h-1zM6 19H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1z"/></svg>`,
+    video: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="14" height="14" rx="3"/><path d="m17 10 4-2v8l-4-2z"/><path d="m9 9 4 3-4 3z" fill="currentColor" stroke="none"/></svg>`,
+    userCircle: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>`,
     cart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M3 4h2l2.6 10.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.6L21 8H7"/></svg>`
   };
 
@@ -404,7 +406,7 @@
     const next = state.modules.find(m => !m.is_completed && !m.is_locked) || null;
     const completedMinutes = state.modules.filter(m => m.is_completed).reduce((sum, m) => sum + Number(m.duration_minutes || 0), 0);
     return `
-      <div class="page-head"><div><h1>Halo, ${escapeHtml(firstName)} 👋</h1><p>Lanjutkan perjalanan belajarmu dan selesaikan modul secara berurutan.</p></div></div>
+      <div class="page-head"><div><h1 style="display:flex;align-items:center;gap:12px"><span style="width:42px;height:42px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary),#8d2336);color:#f6d760;box-shadow:0 10px 24px rgba(110,20,35,.18)">${icons.userCircle}</span><span>Halo, ${escapeHtml(firstName)}</span></h1><p>Lanjutkan perjalanan belajarmu dan selesaikan modul secara berurutan.</p></div></div>
       <section class="card hero-card">
         <div style="position:relative;z-index:1">
           <div class="hero-kicker">${escapeHtml(state.settings.TAGLINE)}</div>
@@ -497,10 +499,10 @@
       ? `<button class="btn btn-accent" data-tool-tab="launch">Buka 2 Tools ${icons.arrow}</button>`
       : `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools ${icons.arrow}</button>`;
     return `<section class="tool-detail-stack">
-      <div class="section-head"><div><h2>Dengarkan Contoh Hasil</h2><p>Bukti hasil ditempatkan di awal sebagai hook utama.</p></div></div>
+      <div class="section-head"><div><h2>Lihat & Dengarkan Contoh Hasil</h2><p>Audio dan video ditampilkan sesuai jenis media yang dipilih di Spreadsheet.</p></div></div>
       <div class="sample-grid">${data.samples?.length ? data.samples.map((sample, sampleIndex) => `<article class="card sample-card">
         <div class="sample-card-head">
-          <div class="sample-icon">${icons.headphones}</div>
+          <div class="sample-icon">${sample.media_type === "VIDEO" ? icons.video : icons.headphones}</div>
           <div class="sample-copy">
             <span class="sample-label">CONTOH HASIL ${String(sampleIndex + 1).padStart(2, "0")}</span>
             <h3>${escapeHtml(sample.title)}</h3>
@@ -508,24 +510,31 @@
           </div>
         </div>
         ${sample.media_url ? sample.media_type === "VIDEO" ? (() => {
-          const embedUrl = youtubeEmbedUrl(sample.media_url);
+          const videoId = youtubeVideoId(sample.media_url);
+          const thumbnailUrl = videoId
+            ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`
+            : "";
 
-          return embedUrl ? `
-            <div style="position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:18px;background:#16090f">
-              <iframe
-                src="${escapeHtml(embedUrl)}"
-                title="${escapeHtml(sample.title)}"
-                loading="lazy"
-                style="position:absolute;inset:0;width:100%;height:100%;border:0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-              ></iframe>
-            </div>` : `
-            <a class="sample-video-button" href="${escapeHtml(sample.media_url)}" target="_blank" rel="noopener">
-              <span class="sample-video-icon">${icons.play}</span>
-              <span><strong>Tonton Contoh</strong><small>Buka video di YouTube</small></span>
-              ${icons.arrow}
-            </a>`;
+          return `
+            <button
+              type="button"
+              data-sample-video
+              data-video-url="${escapeHtml(sample.media_url)}"
+              data-video-title="${escapeHtml(sample.title)}"
+              style="position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;background:linear-gradient(135deg,#210b13,#5f1727);box-shadow:0 14px 34px rgba(48,10,20,.18)"
+              aria-label="Putar ${escapeHtml(sample.title)}"
+            >
+              ${thumbnailUrl ? `<img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(sample.title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />` : ""}
+              <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,5,9,.12),rgba(28,7,15,.82))"></span>
+              <span style="position:absolute;left:18px;right:18px;bottom:18px;display:flex;align-items:center;gap:13px;text-align:left;color:white">
+                <span style="width:52px;height:52px;flex:0 0 52px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e1b928,#f5dc6e);color:#5d1020;box-shadow:0 10px 24px rgba(0,0,0,.24)">${icons.play}</span>
+                <span style="display:flex;flex-direction:column;gap:3px">
+                  <strong style="font-size:15px;letter-spacing:.01em">Putar Video</strong>
+                  <small style="font-size:11px;color:rgba(255,255,255,.72)">Tampil di popup dashboard</small>
+                </span>
+                <span style="margin-left:auto">${icons.arrow}</span>
+              </span>
+            </button>`;
         })() : `
           <div class="premium-audio-player" data-audio-player>
             <audio preload="metadata" src="${escapeHtml(sample.media_url)}"></audio>
@@ -834,6 +843,32 @@
     });
   }
 
+  function youtubeVideoId(url) {
+    const value = String(url || "").trim();
+    if (!value) return "";
+
+    try {
+      const u = new URL(value);
+      if (u.hostname.includes("youtu.be")) {
+        return u.pathname.slice(1).split("/")[0] || "";
+      }
+
+      if (u.hostname.includes("youtube.com")) {
+        if (u.pathname.startsWith("/embed/")) {
+          return u.pathname.split("/embed/")[1].split("/")[0] || "";
+        }
+
+        if (u.pathname.startsWith("/shorts/")) {
+          return u.pathname.split("/shorts/")[1].split("/")[0] || "";
+        }
+
+        return u.searchParams.get("v") || "";
+      }
+    } catch {}
+
+    return "";
+  }
+
   function youtubeEmbedUrl(url) {
     const value = String(url || "").trim();
     if (!value) return "";
@@ -848,6 +883,46 @@
       }
       return id ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?rel=0` : "";
     } catch { return ""; }
+  }
+
+  function openSampleVideo(url, title) {
+    const embed = youtubeEmbedUrl(url);
+
+    if (!embed) {
+      window.open(url, "_blank", "noopener");
+      return;
+    }
+
+    const modal = document.createElement("div");
+    modal.className = "modal-backdrop";
+    modal.id = "sample-video-modal";
+    modal.innerHTML = `
+      <section class="modal" style="max-width:980px">
+        <header class="modal-head">
+          <div>
+            <span class="small muted">CONTOH HASIL VIDEO</span>
+            <h2>${escapeHtml(title || "Video Contoh")}</h2>
+          </div>
+          <button class="icon-button" data-close-modal aria-label="Tutup">${icons.close}</button>
+        </header>
+        <div class="modal-body">
+          <iframe
+            class="video-frame"
+            src="${escapeHtml(embed + "&autoplay=1")}"
+            title="${escapeHtml(title || "Video Contoh")}"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </section>`;
+
+    document.body.appendChild(modal);
+
+    modal.addEventListener("click", event => {
+      if (event.target === modal || event.target.closest("[data-close-modal]")) {
+        modal.remove();
+      }
+    });
   }
 
   async function loadToolDetail(toolId, preserveTab = false) {
@@ -1176,6 +1251,11 @@
 
   function bindAppEvents() {
     bindSampleAudioPlayers();
+    document.querySelectorAll("[data-sample-video]").forEach(node => {
+      node.addEventListener("click", () => {
+        openSampleVideo(node.dataset.videoUrl, node.dataset.videoTitle);
+      });
+    });
     document.querySelectorAll("[data-view]").forEach(node => node.addEventListener("click", () => changeView(node.dataset.view)));
     document.querySelectorAll("[data-open-tool]").forEach(node => node.addEventListener("click", () => changeView(`tool:${node.dataset.openTool}`)));
     document.querySelectorAll("[data-tool-tab]").forEach(node => node.addEventListener("click", () => { state.toolTab = node.dataset.toolTab; renderApp(); }));
