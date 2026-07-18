@@ -464,13 +464,20 @@
     if (state.currentToolLoading) return `<div class="loading-panel card"><div class="loader"></div><p>Menyiapkan landing page tools...</p></div>`;
     const data = state.currentToolDetail;
     if (!data?.tool) return emptyState("Tools belum dimuat", "Kembali ke katalog lalu pilih salah satu tools.");
+
     const tool = data.tool;
     const tab = state.toolTab;
+    const isBundle = Boolean(tool.is_bundle || (Array.isArray(data.bundle_items) && data.bundle_items.length));
+
+    const activeHeroButton = isBundle
+      ? `<button class="btn btn-accent" data-tool-tab="launch">Buka 2 Tools Sekarang ${icons.arrow}</button>`
+      : `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools Sekarang ${icons.arrow}</button>`;
+
     return `
       <div class="tool-page-head"><button class="back-link" data-view="tools">← Kembali ke Produk & Tools</button><span class="access-badge ${tool.has_access ? "open" : "locked"}">${tool.has_access ? "AKSES AKTIF" : "AKUN FREE"}</span></div>
       <section class="tool-hero card">
         <div class="tool-hero-copy"><div class="hero-kicker">MRZ DIGITAL TOOL</div><h1>${escapeHtml(tool.headline || tool.tool_name)}</h1><p>${escapeHtml(tool.subheadline || tool.short_description)}</p>
-          <div class="tool-hero-actions">${tool.has_access ? `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools Sekarang ${icons.arrow}</button>` : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">${escapeHtml(tool.purchase_label || "Beli Akses")}</button>`}<button class="btn btn-outline" data-tool-tab="modules">Lihat Modul</button></div>
+          <div class="tool-hero-actions">${tool.has_access ? activeHeroButton : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">${escapeHtml(tool.purchase_label || "Beli Akses")}</button>`}<button class="btn btn-outline" data-tool-tab="modules">Lihat Modul</button></div>
           <div class="price-stack"><del>${formatCurrency(tool.original_price)}</del><strong>${formatCurrency(tool.sale_price)}</strong><span>Sekali bayar</span></div>
         </div>
         <div class="tool-hero-media">${tool.thumbnail_url ? `<img src="${escapeHtml(tool.thumbnail_url)}" alt="${escapeHtml(tool.tool_name)}">` : icons.headphones}</div>
@@ -485,6 +492,10 @@
 
   function renderToolSummary(data) {
     const tool = data.tool;
+    const isBundle = Boolean(tool.is_bundle || (Array.isArray(data.bundle_items) && data.bundle_items.length));
+    const ownedSummaryAction = isBundle
+      ? `<button class="btn btn-accent" data-tool-tab="launch">Buka 2 Tools ${icons.arrow}</button>`
+      : `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools ${icons.arrow}</button>`;
     return `<section class="tool-detail-stack">
       <div class="section-head"><div><h2>Dengarkan Contoh Hasil</h2><p>Bukti hasil ditempatkan di awal sebagai hook utama.</p></div></div>
       <div class="sample-grid">${data.samples?.length ? data.samples.map((sample, sampleIndex) => `<article class="card sample-card">
@@ -516,7 +527,7 @@
           </div>` : `<span class="sample-placeholder">Link contoh belum diisi di TOOL_SAMPLES</span>`}
       </article>`).join("") : emptyState("Contoh hasil belum tersedia", "Tambahkan link audio/video pada sheet TOOL_SAMPLES.")}</div>
       <div class="info-split"><section class="card card-pad"><h2>Manfaat Utama</h2><div class="benefit-list">${(tool.benefits || []).map(item => `<div><span>✓</span><p>${escapeHtml(item)}</p></div>`).join("")}</div></section><section class="card card-pad"><h2>Cocok Untuk Siapa?</h2><div class="benefit-list audience">${(tool.audience || []).map(item => `<div><span>•</span><p>${escapeHtml(item)}</p></div>`).join("")}</div></section></div>
-      <section class="card purchase-banner"><div><span class="hero-kicker">PROMO TERBATAS</span><h2>Dapatkan MDapatkan ${escapeHtml(tool.tool_name)} sekarang.RZ Voice Over Pro sekarang.</h2><p>Harga normal <del>${formatCurrency(tool.original_price)}</del>, sekarang hanya <strong>${formatCurrency(tool.sale_price)}</strong>.</p></div>${tool.has_access ? `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools ${icons.arrow}</button>` : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">Buat Pesanan ${icons.cart}</button>`}</section>
+      <section class="card purchase-banner"><div><span class="hero-kicker">PROMO TERBATAS</span><h2>Dapatkan ${escapeHtml(tool.tool_name)} sekarang.</h2><p>Harga normal <del>${formatCurrency(tool.original_price)}</del>, sekarang hanya <strong>${formatCurrency(tool.sale_price)}</strong>.</p></div>${tool.has_access ? ownedSummaryAction : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">Buat Pesanan ${icons.cart}</button>`}</section>
     </section>`;
   }
 
@@ -528,7 +539,47 @@
 
   function renderToolLaunch(data) {
     const tool = data.tool;
-    return `<section class="card launch-panel"><div class="launch-icon">${tool.has_access ? icons.headphones : icons.lock}</div><span class="hero-kicker">STATUS AKSES</span><h2>${tool.has_access ? "Tools siap digunakan" : "MRZ Voice Over `${tool.tool_name} masih terkunci`Pro masih terkunci"}</h2><p>${tool.has_access ? "Klik tombol di bawah untuk membuka tools asli di tab baru." : "Akun FREE tetap dapat melihat ringkasan, contoh hasil, dan modul pengenalan. Beli akses untuk membuka semua modul dan generator."}</p>${tool.has_access ? `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka MRZ Voice OveBuka ${escapeHtml(tool.tool_name)} ${icons.arrow}r Pro ${icons.arrow}</button>` : `<div class="launch-price"><del>${formatCurrency(tool.original_price)}</del><strong>${formatCurrency(tool.sale_price)}</strong></div><button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">Buat Pesanan Sekarang ${icons.cart}</button>`}</section>`;
+    const bundleItems = Array.isArray(data.bundle_items) ? data.bundle_items : [];
+    const isBundle = bundleItems.length > 0;
+
+    if (!tool.has_access) {
+      return `<section class="card launch-panel">
+        <div class="launch-icon">${icons.lock}</div>
+        <span class="hero-kicker">STATUS AKSES</span>
+        <h2>${escapeHtml(tool.tool_name)} masih terkunci</h2>
+        <p>Akun FREE tetap dapat melihat ringkasan, contoh hasil, dan modul pengenalan. Beli akses untuk membuka semua modul dan generator.</p>
+        <div class="launch-price"><del>${formatCurrency(tool.original_price)}</del><strong>${formatCurrency(tool.sale_price)}</strong></div>
+        <button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">Buat Pesanan Sekarang ${icons.cart}</button>
+      </section>`;
+    }
+
+    if (isBundle) {
+      return `<section class="card launch-panel">
+        <div class="launch-icon">${icons.tools}</div>
+        <span class="hero-kicker">BUNDLE AKTIF</span>
+        <h2>2 Tools siap digunakan</h2>
+        <p>Pilih tools yang ingin dibuka. Keduanya termasuk dalam ${escapeHtml(tool.tool_name)}.</p>
+        <div class="hero-actions" style="justify-content:center;margin-top:24px">
+          ${bundleItems.map(item => `
+            <button
+              class="btn btn-accent"
+              data-launch-tool="${escapeHtml(item.tool_id)}"
+              ${item.has_access ? "" : "disabled"}
+            >
+              Buka ${escapeHtml(item.tool_name)} ${icons.arrow}
+            </button>
+          `).join("")}
+        </div>
+      </section>`;
+    }
+
+    return `<section class="card launch-panel">
+      <div class="launch-icon">${icons.headphones}</div>
+      <span class="hero-kicker">STATUS AKSES</span>
+      <h2>Tools siap digunakan</h2>
+      <p>Klik tombol di bawah untuk membuka tools asli di tab baru.</p>
+      <button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka ${escapeHtml(tool.tool_name)} ${icons.arrow}</button>
+    </section>`;
   }
 
   function statCard(icon, label, value) {
