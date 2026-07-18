@@ -195,9 +195,10 @@
     app.innerHTML = `<div class="loading-screen"><div><div class="loader"></div><p class="muted small" style="margin-top:16px">Menyiapkan member area...</p></div></div>`;
   }
 
-  function renderLogin(errorMessage = "") {
+  function renderLogin(errorMessage = "", successMessage = "") {
     applyTheme();
     const isRegister = state.authMode === "register";
+    const isForgot = state.authMode === "forgot";
     app.innerHTML = `
       <main class="login-shell">
         <section class="login-brand">
@@ -217,13 +218,33 @@
           <div class="login-card">
             <div class="logo-box compact" style="margin-bottom:20px">MRZ</div>
             <div class="auth-tabs">
-              <button type="button" class="auth-tab ${!isRegister ? "active" : ""}" data-auth-mode="login">Masuk</button>
+              <button type="button" class="auth-tab ${!isRegister && !isForgot ? "active" : ""}" data-auth-mode="login">Masuk</button>
               <button type="button" class="auth-tab ${isRegister ? "active" : ""}" data-auth-mode="register">Daftar Gratis</button>
             </div>
-            <h2>${isRegister ? "Buat akun gratis" : "Selamat datang"}</h2>
-            <p>${isRegister ? "Daftar tanpa menghubungi admin. Akunmu otomatis aktif sebagai FREE." : "Masukkan email dan password akunmu."}</p>
+            <h2>${isForgot ? "Reset password" : isRegister ? "Buat akun gratis" : "Selamat datang"}</h2>
+            <p>${isForgot
+              ? "Masukkan email akun dan buat password baru. Fitur ini masih dalam mode uji coba."
+              : isRegister
+                ? "Daftar tanpa menghubungi admin. Akunmu otomatis aktif sebagai FREE."
+                : "Masukkan email dan password akunmu."}</p>
+
             <div id="login-error" class="form-error ${errorMessage ? "show" : ""}">${escapeHtml(errorMessage)}</div>
-            ${isRegister ? `
+
+            <div
+              id="login-success"
+              style="${successMessage
+                ? "display:block;margin-bottom:16px;padding:12px 14px;border:1px solid #b8dfc8;border-radius:12px;background:#edf9f2;color:#166534;font-size:13px;font-weight:700"
+                : "display:none"}"
+            >${escapeHtml(successMessage)}</div>
+
+            ${isForgot ? `
+              <form id="reset-password-form" autocomplete="off">
+                <div class="form-group"><label for="reset-email">Email akun</label><div class="input-wrap"><span class="input-icon">@</span><input id="reset-email" name="email" type="email" required placeholder="nama@email.com" autocomplete="email" /></div></div>
+                <div class="form-group"><label for="reset-password">Password baru</label><div class="input-wrap"><span class="input-icon">●</span><input id="reset-password" name="new_password" type="password" minlength="8" required placeholder="Minimal 8 karakter" autocomplete="new-password" style="padding-right:52px" /><button type="button" class="password-toggle" data-toggle-password="reset-password" aria-label="Tampilkan password">${icons.eye}</button></div></div>
+                <div class="form-group"><label for="reset-confirm-password">Ulangi password baru</label><div class="input-wrap"><span class="input-icon">●</span><input id="reset-confirm-password" name="confirm_password" type="password" minlength="8" required placeholder="Ketik ulang password baru" autocomplete="new-password" style="padding-right:52px" /><button type="button" class="password-toggle" data-toggle-password="reset-confirm-password" aria-label="Tampilkan password">${icons.eye}</button></div></div>
+                <button id="reset-password-button" type="submit" class="btn btn-primary btn-block">Reset Password ${icons.arrow}</button>
+                <button type="button" class="btn btn-outline btn-block" data-auth-mode="login" style="margin-top:10px">Kembali ke Login</button>
+              </form>` : isRegister ? `
               <form id="register-form" autocomplete="on">
                 <div class="form-group"><label for="reg-name">Nama</label><div class="input-wrap"><span class="input-icon">●</span><input id="reg-name" name="name" required minlength="2" placeholder="Nama lengkap" /></div></div>
                 <div class="form-group"><label for="reg-email">Email</label><div class="input-wrap"><span class="input-icon">@</span><input id="reg-email" name="email" type="email" required placeholder="nama@email.com" autocomplete="email" /></div></div>
@@ -235,8 +256,12 @@
                 <div class="form-group"><label for="email">Email</label><div class="input-wrap"><span class="input-icon">@</span><input id="email" name="email" type="email" placeholder="nama@email.com" required autocomplete="username" /></div></div>
                 <div class="form-group"><label for="password">Password</label><div class="input-wrap"><span class="input-icon">●</span><input id="password" name="password" type="password" placeholder="Minimal 8 karakter" required autocomplete="current-password" style="padding-right:52px" /><button type="button" class="password-toggle" data-toggle-password="password" aria-label="Tampilkan password">${icons.eye}</button></div></div>
                 <button id="login-button" type="submit" class="btn btn-primary btn-block">Masuk ke Member Area ${icons.arrow}</button>
+                <button type="button" data-auth-mode="forgot" style="display:block;width:100%;margin-top:14px;border:0;background:transparent;color:var(--primary);font-size:13px;font-weight:800;cursor:pointer">Lupa Password?</button>
               </form>`}
-            <p class="login-help">Akun FREE dapat melihat semua produk dan contoh hasil.<br/>Tools premium tetap terkunci sampai akses dibeli.</p>
+
+            <p class="login-help">${isForgot
+              ? "Mode uji coba: reset dilakukan langsung melalui email akun tanpa OTP."
+              : "Akun FREE dapat melihat semua produk dan contoh hasil.<br/>Tools premium tetap terkunci sampai akses dibeli."}</p>
           </div>
         </section>
       </main>`;
@@ -271,6 +296,43 @@
         errorBox.classList.add("show");
         button.disabled = false;
         button.innerHTML = `Masuk ke Member Area ${icons.arrow}`;
+      }
+    });
+
+    document.getElementById("reset-password-form")?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = document.getElementById("reset-password-button");
+      const errorBox = document.getElementById("login-error");
+      const newPassword = form.new_password.value;
+      const confirmPassword = form.confirm_password.value;
+
+      errorBox.classList.remove("show");
+
+      if (newPassword !== confirmPassword) {
+        errorBox.textContent = "Konfirmasi password tidak sama.";
+        errorBox.classList.add("show");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Mengubah password...";
+
+      try {
+        const data = await api({
+          action: "resetPasswordDirect",
+          email: form.email.value.trim(),
+          new_password: newPassword,
+          confirm_password: confirmPassword
+        });
+
+        state.authMode = "login";
+        renderLogin("", data.message || "Password berhasil diubah. Silakan login menggunakan password baru.");
+      } catch (error) {
+        errorBox.textContent = error.message;
+        errorBox.classList.add("show");
+        button.disabled = false;
+        button.innerHTML = `Reset Password ${icons.arrow}`;
       }
     });
 
