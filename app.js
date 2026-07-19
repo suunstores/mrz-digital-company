@@ -74,6 +74,7 @@
     tools: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>`,
     headphones: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M18 19h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2h-1zM6 19H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1z"/></svg>`,
     video: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="14" height="14" rx="3"/><path d="m17 10 4-2v8l-4-2z"/><path d="m9 9 4 3-4 3z" fill="currentColor" stroke="none"/></svg>`,
+    image: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m5 18 5-5 3 3 2-2 4 4"/></svg>`,
     userCircle: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>`,
     cart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M3 4h2l2.6 10.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.6L21 8H7"/></svg>`,
     whatsapp: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.8 7.4L3 20.5l1.4-4.6A8.5 8.5 0 1 1 20.5 11.7Z"/><path d="M8.2 7.8c.2-.5.5-.5.8-.5h.5c.2 0 .4.1.5.4l.8 1.9c.1.3 0 .5-.1.7l-.6.8c-.2.2-.1.4 0 .6.8 1.4 1.9 2.5 3.4 3.2.2.1.4.1.6-.1l.9-1.1c.2-.2.4-.3.7-.2l1.9.9c.3.1.4.3.4.5 0 .3-.2 1.3-.8 1.8-.5.5-1.3.8-2 .8-.7 0-1.6-.2-2.6-.7-1.5-.7-2.8-1.7-3.9-3-1-1.1-1.8-2.4-2.1-3.4-.3-.9-.1-1.8.3-2.6.2-.4.6-.8 1.3-.8Z"/></svg>`
@@ -857,6 +858,104 @@
       ${tab === "summary" ? renderToolSummary(data) : tab === "modules" ? renderToolModules(data) : renderToolLaunch(data)}`;
   }
 
+  function normalizeSampleMediaType(value) {
+    const type = String(value || "AUDIO").trim().toUpperCase();
+    return ["AUDIO", "VIDEO", "IMAGE"].includes(type) ? type : "AUDIO";
+  }
+
+  function renderSampleIcon(sample) {
+    const mediaType = normalizeSampleMediaType(sample?.media_type);
+    if (mediaType === "VIDEO") return icons.video;
+    if (mediaType === "IMAGE") return icons.image;
+    return icons.headphones;
+  }
+
+  function renderSampleMedia(sample) {
+    const mediaUrl = String(sample?.media_url || "").trim();
+    const mediaType = normalizeSampleMediaType(sample?.media_type);
+    const title = String(sample?.title || "Contoh Hasil");
+
+    if (!mediaUrl) {
+      return `<span class="sample-placeholder">Link contoh belum diisi di Spreadsheet.</span>`;
+    }
+
+    if (mediaType === "IMAGE") {
+      return `
+        <button
+          type="button"
+          data-sample-image
+          data-image-url="${escapeHtml(mediaUrl)}"
+          data-image-title="${escapeHtml(title)}"
+          style="position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;background:linear-gradient(135deg,#f8f1e7,#ead9c7);box-shadow:0 14px 34px rgba(48,10,20,.12)"
+          aria-label="Lihat gambar ${escapeHtml(title)}"
+        >
+          <img
+            src="${escapeHtml(mediaUrl)}"
+            alt="${escapeHtml(title)}"
+            loading="lazy"
+            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"
+          />
+          <span
+            style="display:none;position:absolute;inset:0;place-items:center;padding:24px;color:#6e1423;font-size:13px;font-weight:800;text-align:center"
+          >
+            Gambar tidak dapat dimuat. Klik untuk membuka link asli.
+          </span>
+          <span style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 48%,rgba(28,7,15,.82))"></span>
+          <span style="position:absolute;left:18px;right:18px;bottom:17px;display:flex;align-items:center;gap:12px;text-align:left;color:white">
+            <span style="width:48px;height:48px;flex:0 0 48px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e1b928,#f5dc6e);color:#5d1020;box-shadow:0 10px 24px rgba(0,0,0,.22)">${icons.image}</span>
+            <span style="display:flex;flex-direction:column;gap:3px">
+              <strong style="font-size:15px;letter-spacing:.01em">Lihat Gambar</strong>
+              <small style="font-size:11px;color:rgba(255,255,255,.75)">Tampil besar di popup dashboard</small>
+            </span>
+            <span style="margin-left:auto">${icons.arrow}</span>
+          </span>
+        </button>`;
+    }
+
+    if (mediaType === "VIDEO") {
+      const videoId = youtubeVideoId(mediaUrl);
+      const thumbnailUrl = videoId
+        ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`
+        : "";
+
+      return `
+        <button
+          type="button"
+          data-sample-video
+          data-video-url="${escapeHtml(mediaUrl)}"
+          data-video-title="${escapeHtml(title)}"
+          style="position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;background:linear-gradient(135deg,#210b13,#5f1727);box-shadow:0 14px 34px rgba(48,10,20,.18)"
+          aria-label="Putar ${escapeHtml(title)}"
+        >
+          ${thumbnailUrl ? `<img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />` : ""}
+          <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,5,9,.12),rgba(28,7,15,.82))"></span>
+          <span style="position:absolute;left:18px;right:18px;bottom:18px;display:flex;align-items:center;gap:13px;text-align:left;color:white">
+            <span style="width:52px;height:52px;flex:0 0 52px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e1b928,#f5dc6e);color:#5d1020;box-shadow:0 10px 24px rgba(0,0,0,.24)">${icons.play}</span>
+            <span style="display:flex;flex-direction:column;gap:3px">
+              <strong style="font-size:15px;letter-spacing:.01em">Putar Video</strong>
+              <small style="font-size:11px;color:rgba(255,255,255,.72)">Tampil di popup dashboard</small>
+            </span>
+            <span style="margin-left:auto">${icons.arrow}</span>
+          </span>
+        </button>`;
+    }
+
+    return `
+      <div class="premium-audio-player" data-audio-player>
+        <audio preload="metadata" src="${escapeHtml(mediaUrl)}"></audio>
+        <button type="button" class="audio-play-button" data-audio-play aria-label="Putar audio">▶</button>
+        <div class="audio-player-main">
+          <div class="audio-player-topline">
+            <span class="audio-status" data-audio-status>Siap diputar</span>
+            <span class="audio-duration"><span data-audio-current>0:00</span> / <span data-audio-total>0:00</span></span>
+          </div>
+          <input class="audio-progress" data-audio-progress type="range" min="0" max="100" value="0" step="0.1" aria-label="Posisi audio" />
+          <div class="audio-wave" aria-hidden="true">${Array.from({length: 18}, (_, i) => `<i style="--bar:${(i % 6) + 1}"></i>`).join("")}</div>
+        </div>
+      </div>`;
+  }
+
   function renderToolSummary(data) {
     const tool = data.tool;
     const isBundle = Boolean(tool.is_bundle || (Array.isArray(data.bundle_items) && data.bundle_items.length));
@@ -864,56 +963,18 @@
       ? `<button class="btn btn-accent" data-tool-tab="launch">Buka 2 Tools ${icons.arrow}</button>`
       : `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools ${icons.arrow}</button>`;
     return `<section class="tool-detail-stack">
-      <div class="section-head"><div><h2>Lihat & Dengarkan Contoh Hasil</h2><p>Audio dan video ditampilkan sesuai jenis media yang dipilih di Spreadsheet.</p></div></div>
+      <div class="section-head"><div><h2>Lihat Contoh Hasil</h2><p>Audio, video, dan gambar ditampilkan sesuai jenis media yang dipilih di Spreadsheet.</p></div></div>
       <div class="sample-grid">${data.samples?.length ? data.samples.map((sample, sampleIndex) => `<article class="card sample-card">
         <div class="sample-card-head">
-          <div class="sample-icon">${sample.media_type === "VIDEO" ? icons.video : icons.headphones}</div>
+          <div class="sample-icon">${renderSampleIcon(sample)}</div>
           <div class="sample-copy">
             <span class="sample-label">CONTOH HASIL ${String(sampleIndex + 1).padStart(2, "0")}</span>
             <h3>${escapeHtml(sample.title)}</h3>
             <p>${escapeHtml(sample.description)}</p>
           </div>
         </div>
-        ${sample.media_url ? sample.media_type === "VIDEO" ? (() => {
-          const videoId = youtubeVideoId(sample.media_url);
-          const thumbnailUrl = videoId
-            ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`
-            : "";
-
-          return `
-            <button
-              type="button"
-              data-sample-video
-              data-video-url="${escapeHtml(sample.media_url)}"
-              data-video-title="${escapeHtml(sample.title)}"
-              style="position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;background:linear-gradient(135deg,#210b13,#5f1727);box-shadow:0 14px 34px rgba(48,10,20,.18)"
-              aria-label="Putar ${escapeHtml(sample.title)}"
-            >
-              ${thumbnailUrl ? `<img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(sample.title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />` : ""}
-              <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,5,9,.12),rgba(28,7,15,.82))"></span>
-              <span style="position:absolute;left:18px;right:18px;bottom:18px;display:flex;align-items:center;gap:13px;text-align:left;color:white">
-                <span style="width:52px;height:52px;flex:0 0 52px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e1b928,#f5dc6e);color:#5d1020;box-shadow:0 10px 24px rgba(0,0,0,.24)">${icons.play}</span>
-                <span style="display:flex;flex-direction:column;gap:3px">
-                  <strong style="font-size:15px;letter-spacing:.01em">Putar Video</strong>
-                  <small style="font-size:11px;color:rgba(255,255,255,.72)">Tampil di popup dashboard</small>
-                </span>
-                <span style="margin-left:auto">${icons.arrow}</span>
-              </span>
-            </button>`;
-        })() : `
-          <div class="premium-audio-player" data-audio-player>
-            <audio preload="metadata" src="${escapeHtml(sample.media_url)}"></audio>
-            <button type="button" class="audio-play-button" data-audio-play aria-label="Putar audio">▶</button>
-            <div class="audio-player-main">
-              <div class="audio-player-topline">
-                <span class="audio-status" data-audio-status>Siap diputar</span>
-                <span class="audio-duration"><span data-audio-current>0:00</span> / <span data-audio-total>0:00</span></span>
-              </div>
-              <input class="audio-progress" data-audio-progress type="range" min="0" max="100" value="0" step="0.1" aria-label="Posisi audio" />
-              <div class="audio-wave" aria-hidden="true">${Array.from({length: 18}, (_, i) => `<i style="--bar:${(i % 6) + 1}"></i>`).join("")}</div>
-            </div>
-          </div>` : `<span class="sample-placeholder">Link contoh belum diisi di TOOL_SAMPLES</span>`}
-      </article>`).join("") : emptyState("Contoh hasil belum tersedia", "Tambahkan link audio/video pada sheet TOOL_SAMPLES.")}</div>
+        ${renderSampleMedia(sample)}
+      </article>`).join("") : emptyState("Contoh hasil belum tersedia", "Tambahkan link audio, video, atau gambar pada kolom sample di sheet TOOLS.")}</div>
       <div class="info-split"><section class="card card-pad"><h2>Manfaat Utama</h2><div class="benefit-list">${(tool.benefits || []).map(item => `<div><span>✓</span><p>${escapeHtml(item)}</p></div>`).join("")}</div></section><section class="card card-pad"><h2>Cocok Untuk Siapa?</h2><div class="benefit-list audience">${(tool.audience || []).map(item => `<div><span>•</span><p>${escapeHtml(item)}</p></div>`).join("")}</div></section></div>
       <section class="card purchase-banner"><div><span class="hero-kicker">PROMO TERBATAS</span><h2>Dapatkan ${escapeHtml(tool.tool_name)} sekarang.</h2><p>Harga normal <del>${formatCurrency(tool.original_price)}</del>, sekarang hanya <strong>${formatCurrency(tool.sale_price)}</strong>.</p></div>${tool.has_access ? ownedSummaryAction : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">Buat Pesanan ${icons.cart}</button>`}</section>
     </section>`;
@@ -1278,6 +1339,52 @@
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowfullscreen
           ></iframe>
+        </div>
+      </section>`;
+
+    document.body.appendChild(modal);
+
+    modal.addEventListener("click", event => {
+      if (event.target === modal || event.target.closest("[data-close-modal]")) {
+        modal.remove();
+      }
+    });
+  }
+
+  function openSampleImage(url, title) {
+    const imageUrl = String(url || "").trim();
+    if (!imageUrl) return;
+
+    const modal = document.createElement("div");
+    modal.className = "modal-backdrop";
+    modal.id = "sample-image-modal";
+    modal.innerHTML = `
+      <section class="modal" style="max-width:1040px">
+        <header class="modal-head">
+          <div>
+            <span class="small muted">CONTOH HASIL GAMBAR</span>
+            <h2>${escapeHtml(title || "Gambar Contoh")}</h2>
+          </div>
+          <button class="icon-button" data-close-modal aria-label="Tutup">${icons.close}</button>
+        </header>
+        <div class="modal-body">
+          <div style="display:grid;place-items:center;min-height:260px;padding:12px;border-radius:18px;background:#f7f3ef;border:1px solid #eadfce">
+            <img
+              src="${escapeHtml(imageUrl)}"
+              alt="${escapeHtml(title || "Gambar Contoh")}"
+              style="display:block;max-width:100%;max-height:72vh;object-fit:contain;border-radius:12px;box-shadow:0 16px 40px rgba(48,10,20,.15)"
+            />
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:16px">
+            <a
+              class="btn btn-outline"
+              href="${escapeHtml(imageUrl)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Buka Gambar Asli ${icons.arrow}
+            </a>
+          </div>
         </div>
       </section>`;
 
@@ -1940,6 +2047,11 @@
     document.querySelectorAll("[data-sample-video]").forEach(node => {
       node.addEventListener("click", () => {
         openSampleVideo(node.dataset.videoUrl, node.dataset.videoTitle);
+      });
+    });
+    document.querySelectorAll("[data-sample-image]").forEach(node => {
+      node.addEventListener("click", () => {
+        openSampleImage(node.dataset.imageUrl, node.dataset.imageTitle);
       });
     });
     document.querySelectorAll("[data-view]").forEach(node => node.addEventListener("click", () => changeView(node.dataset.view)));
