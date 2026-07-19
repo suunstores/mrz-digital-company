@@ -540,6 +540,7 @@
               ${navItem("checklist", "Checklist Onboarding", icons.checklist, `${state.progress.completed}/${state.progress.total}`)}
               ${navItem("schedule", "Jadwal Konsultasi", icons.calendar)}
               ${navItem("notes", "Catatan Saya", icons.note)}
+              ${navItem("profile", "Pengaturan Profil", icons.userCircle)}
             </div>
             <div class="nav-group">
               <div class="nav-label">Materi Belajar</div>
@@ -585,7 +586,7 @@
       return zone ? `Zona ${zone.zone_no} · ${zone.zone_name}` : "Materi";
     }
     if (state.currentView.startsWith("tool:")) return state.currentToolDetail?.tool?.tool_name || "Detail Tools";
-    return ({ home: "Beranda", tools: "Produk & Tools", checklist: "Checklist Onboarding", schedule: "Jadwal Konsultasi", notes: "Catatan Saya", admin: "Pesanan & Akses" })[state.currentView] || "Beranda";
+    return ({ home: "Beranda", tools: "Produk & Tools", checklist: "Checklist Onboarding", schedule: "Jadwal Konsultasi", notes: "Catatan Saya", profile: "Pengaturan Profil", admin: "Pesanan & Akses" })[state.currentView] || "Beranda";
   }
 
   function renderCurrentView() {
@@ -595,12 +596,175 @@
     if (state.currentView === "checklist") return renderChecklist();
     if (state.currentView === "schedule") return renderSchedule();
     if (state.currentView === "notes") return renderNotes();
+    if (state.currentView === "profile") return renderProfile();
     if (state.currentView === "admin") return renderAdmin();
     if (state.currentView.startsWith("zone:")) {
       state.selectedZone = state.currentView.split(":")[1];
       return renderChecklist(true);
     }
     return renderHome();
+  }
+
+  function renderProfile() {
+    const user = state.user || {};
+
+    return `
+      <section class="card card-pad" style="overflow:hidden">
+        <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <div
+            class="avatar"
+            style="width:72px;height:72px;border-radius:22px;font-size:22px;box-shadow:0 12px 30px rgba(110,20,35,.18)"
+          >
+            ${initials(user.name)}
+          </div>
+
+          <div style="flex:1;min-width:220px">
+            <span class="small muted">PROFIL MEMBER</span>
+            <h2 style="margin:6px 0 6px;font-size:25px">${escapeHtml(user.name || "Member")}</h2>
+            <p class="muted" style="margin:0">
+              Kelola data pribadi dan keamanan akunmu.
+            </p>
+          </div>
+
+          <span class="package-badge">${escapeHtml(user.package || "MEMBER")}</span>
+        </div>
+      </section>
+
+      <div class="grid grid-2" style="margin-top:18px;align-items:start">
+        <section class="card card-pad">
+          <div class="section-head" style="margin-top:0">
+            <div>
+              <h2>Data Pribadi</h2>
+              <p>Nama dan alamat dapat diperbarui kapan saja.</p>
+            </div>
+          </div>
+
+          <div id="profile-error" class="form-error"></div>
+
+          <form id="profile-form" autocomplete="on">
+            <div class="form-group">
+              <label for="profile-name">Nama lengkap</label>
+              <input
+                id="profile-name"
+                name="name"
+                required
+                minlength="2"
+                maxlength="100"
+                value="${escapeHtml(user.name || "")}"
+                placeholder="Nama lengkap"
+                autocomplete="name"
+              />
+            </div>
+
+            <div class="grid grid-2" style="gap:14px">
+              <div class="form-group">
+                <label for="profile-email">Email akun</label>
+                <input
+                  id="profile-email"
+                  type="email"
+                  value="${escapeHtml(user.email || "")}"
+                  readonly
+                  style="background:#F7F3EE;color:#7B6F69;cursor:not-allowed"
+                />
+                <div class="small muted" style="margin-top:7px">Email tidak dapat diubah.</div>
+              </div>
+
+              <div class="form-group">
+                <label for="profile-phone">Nomor WhatsApp</label>
+                <input
+                  id="profile-phone"
+                  type="text"
+                  value="${escapeHtml(user.phone || "")}"
+                  readonly
+                  style="background:#F7F3EE;color:#7B6F69;cursor:not-allowed"
+                />
+                <div class="small muted" style="margin-top:7px">Nomor WhatsApp tidak dapat diubah.</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="profile-address">Alamat lengkap</label>
+              <textarea
+                id="profile-address"
+                name="address"
+                maxlength="500"
+                placeholder="Nama jalan, nomor rumah, RT/RW, kecamatan"
+                style="min-height:120px"
+              >${escapeHtml(user.address || "")}</textarea>
+            </div>
+
+            <div class="grid grid-2" style="gap:14px">
+              <div class="form-group">
+                <label for="profile-city">Kota/Kabupaten</label>
+                <input
+                  id="profile-city"
+                  name="city"
+                  maxlength="100"
+                  value="${escapeHtml(user.city || "")}"
+                  placeholder="Contoh: Kabupaten Kediri"
+                  autocomplete="address-level2"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="profile-province">Provinsi</label>
+                <input
+                  id="profile-province"
+                  name="province"
+                  maxlength="100"
+                  value="${escapeHtml(user.province || "")}"
+                  placeholder="Contoh: Jawa Timur"
+                  autocomplete="address-level1"
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="profile-postal-code">Kode pos</label>
+              <input
+                id="profile-postal-code"
+                name="postal_code"
+                maxlength="12"
+                value="${escapeHtml(user.postal_code || "")}"
+                placeholder="Contoh: 64100"
+                autocomplete="postal-code"
+                style="max-width:240px"
+              />
+            </div>
+
+            <button id="save-profile-button" type="submit" class="btn btn-primary">
+              ${icons.save} Simpan Perubahan
+            </button>
+          </form>
+        </section>
+
+        <section class="card card-pad">
+          <div
+            style="width:54px;height:54px;border-radius:17px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary);margin-bottom:18px"
+          >
+            ${icons.lock}
+          </div>
+
+          <h2 style="margin:0 0 8px">Keamanan Akun</h2>
+          <p class="muted" style="line-height:1.75;margin:0 0 22px">
+            Ganti password secara berkala agar akun tetap aman.
+          </p>
+
+          <button id="profile-change-password" type="button" class="btn btn-outline btn-block">
+            ${icons.lock} Ganti Password
+          </button>
+
+          <div
+            style="margin-top:18px;padding:15px 16px;border-radius:14px;background:var(--surface-soft);border:1px solid var(--line)"
+          >
+            <strong style="display:block;font-size:12px;margin-bottom:6px">Data yang dikunci</strong>
+            <span class="small muted" style="line-height:1.7">
+              Email dan nomor WhatsApp hanya dapat diubah oleh admin.
+            </span>
+          </div>
+        </section>
+      </div>
+    `;
   }
 
   function renderHome() {
@@ -1792,6 +1956,43 @@
     document.querySelectorAll("[data-note-module]").forEach(node => node.addEventListener("click", () => { state.selectedNoteModule = node.dataset.noteModule; renderApp(); }));
     document.querySelectorAll("[data-external]").forEach(node => node.addEventListener("click", () => openExternal(node.dataset.external)));
     document.getElementById("change-password-button")?.addEventListener("click", openChangePasswordModal);
+    document.getElementById("profile-change-password")?.addEventListener("click", openChangePasswordModal);
+
+    document.getElementById("profile-form")?.addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const form = event.currentTarget;
+      const button = document.getElementById("save-profile-button");
+      const errorBox = document.getElementById("profile-error");
+
+      errorBox.classList.remove("show");
+      errorBox.textContent = "";
+      button.disabled = true;
+      button.textContent = "Menyimpan profil...";
+
+      try {
+        const data = await api({
+          action: "updateProfile",
+          token: state.token,
+          name: form.name.value.trim(),
+          address: form.address.value.trim(),
+          city: form.city.value.trim(),
+          province: form.province.value.trim(),
+          postal_code: form.postal_code.value.trim()
+        });
+
+        state.user = data.user;
+        saveSession();
+        renderApp();
+        toast(data.message || "Profil berhasil diperbarui.");
+      } catch (error) {
+        errorBox.textContent = error.message;
+        errorBox.classList.add("show");
+        button.disabled = false;
+        button.innerHTML = `${icons.save} Simpan Perubahan`;
+      }
+    });
+
     document.getElementById("logout-button")?.addEventListener("click", () => logout(true));
     document.getElementById("mobile-menu")?.addEventListener("click", () => { state.sidebarOpen = !state.sidebarOpen; renderApp(); });
     document.getElementById("sidebar-overlay")?.addEventListener("click", () => { state.sidebarOpen = false; renderApp(); });
