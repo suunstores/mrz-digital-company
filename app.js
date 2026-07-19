@@ -966,24 +966,28 @@
     return `<section class="tool-detail-stack">
       <style>
         .sample-grid.sample-grid-count-1 {
-          grid-template-columns: minmax(0, 520px) !important;
+          width: 100%;
+          grid-template-columns: minmax(0, 540px) !important;
           justify-content: center;
-          max-width: 520px;
+          max-width: 540px;
           margin-left: auto;
           margin-right: auto;
         }
 
         .sample-grid.sample-grid-count-2 {
+          width: 100%;
           grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           justify-content: center;
-          max-width: 1080px;
+          max-width: 1120px;
           margin-left: auto;
           margin-right: auto;
         }
 
         .sample-grid.sample-grid-count-3 {
+          width: 100%;
           grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-          max-width: none;
+          justify-content: center;
+          max-width: 1320px;
           margin-left: auto;
           margin-right: auto;
         }
@@ -999,6 +1003,7 @@
           .sample-grid.sample-grid-count-1,
           .sample-grid.sample-grid-count-2,
           .sample-grid.sample-grid-count-3 {
+            width: 100%;
             grid-template-columns: minmax(0, 1fr) !important;
             max-width: none;
           }
