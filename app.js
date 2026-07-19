@@ -540,7 +540,6 @@
               ${navItem("checklist", "Checklist Onboarding", icons.checklist, `${state.progress.completed}/${state.progress.total}`)}
               ${navItem("schedule", "Jadwal Konsultasi", icons.calendar)}
               ${navItem("notes", "Catatan Saya", icons.note)}
-              ${navItem("profile", "Pengaturan Profil", icons.userCircle)}
             </div>
             <div class="nav-group">
               <div class="nav-label">Materi Belajar</div>
@@ -557,7 +556,7 @@
             <div class="profile-mini">
               <div class="avatar">${initials(state.user?.name)}</div>
               <div style="min-width:0;flex:1"><strong>${escapeHtml(state.user?.name)}</strong><span>${escapeHtml(state.user?.package || "MEMBER")}</span></div>
-              <button class="icon-button" id="change-password-button" title="Ganti Password">${icons.lock}</button>
+              <button class="icon-button" id="profile-settings-button" title="Pengaturan Profil">${icons.lock}</button>
               <button class="icon-button" id="logout-button" title="Keluar">${icons.logout}</button>
             </div>
           </div>
@@ -1955,7 +1954,12 @@
     document.querySelectorAll("[data-complete-module]").forEach(node => node.addEventListener("click", () => toggleComplete(node.dataset.completeModule)));
     document.querySelectorAll("[data-note-module]").forEach(node => node.addEventListener("click", () => { state.selectedNoteModule = node.dataset.noteModule; renderApp(); }));
     document.querySelectorAll("[data-external]").forEach(node => node.addEventListener("click", () => openExternal(node.dataset.external)));
-    document.getElementById("change-password-button")?.addEventListener("click", openChangePasswordModal);
+    document.getElementById("profile-settings-button")?.addEventListener("click", () => {
+      state.currentView = "profile";
+      state.mobileOpen = false;
+      renderApp();
+    });
+
     document.getElementById("profile-change-password")?.addEventListener("click", openChangePasswordModal);
 
     document.getElementById("profile-form")?.addEventListener("submit", async event => {
