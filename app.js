@@ -958,13 +958,55 @@
 
   function renderToolSummary(data) {
     const tool = data.tool;
+    const sampleCount = Math.min(3, Math.max(1, Number(data.samples?.length || 0)));
     const isBundle = Boolean(tool.is_bundle || (Array.isArray(data.bundle_items) && data.bundle_items.length));
     const ownedSummaryAction = isBundle
       ? `<button class="btn btn-accent" data-tool-tab="launch">Buka 2 Tools ${icons.arrow}</button>`
       : `<button class="btn btn-accent" data-launch-tool="${escapeHtml(tool.tool_id)}">Buka Tools ${icons.arrow}</button>`;
     return `<section class="tool-detail-stack">
+      <style>
+        .sample-grid.sample-grid-count-1 {
+          grid-template-columns: minmax(0, 520px) !important;
+          justify-content: center;
+          max-width: 520px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .sample-grid.sample-grid-count-2 {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          justify-content: center;
+          max-width: 1080px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .sample-grid.sample-grid-count-3 {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          max-width: none;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .sample-grid.sample-grid-count-1 .sample-card,
+        .sample-grid.sample-grid-count-2 .sample-card,
+        .sample-grid.sample-grid-count-3 .sample-card {
+          width: 100%;
+          height: 100%;
+        }
+
+        @media (max-width: 900px) {
+          .sample-grid.sample-grid-count-1,
+          .sample-grid.sample-grid-count-2,
+          .sample-grid.sample-grid-count-3 {
+            grid-template-columns: minmax(0, 1fr) !important;
+            max-width: none;
+          }
+        }
+      </style>
+
       <div class="section-head"><div><h2>Lihat Contoh Hasil</h2><p>Audio, video, dan gambar ditampilkan sesuai jenis media yang dipilih di Spreadsheet.</p></div></div>
-      <div class="sample-grid">${data.samples?.length ? data.samples.map((sample, sampleIndex) => `<article class="card sample-card">
+      <div class="sample-grid sample-grid-count-${sampleCount}">${data.samples?.length ? data.samples.map((sample, sampleIndex) => `<article class="card sample-card">
         <div class="sample-card-head">
           <div class="sample-icon">${renderSampleIcon(sample)}</div>
           <div class="sample-copy">
