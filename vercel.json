@@ -20,34 +20,34 @@
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/dashboard",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/checklist",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/jadwal",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/catatan",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/p/:slug",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/go/:slug",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/course/:slug",
-      "destination": "/index.html"
-    }
-  ]
+"rewrites": [
+  {
+    "source": "/dashboard",
+    "destination": "/"
+  },
+  {
+    "source": "/checklist",
+    "destination": "/"
+  },
+  {
+    "source": "/jadwal",
+    "destination": "/"
+  },
+  {
+    "source": "/catatan",
+    "destination": "/"
+  },
+  {
+    "source": "/p/:slug",
+    "destination": "/"
+  },
+  {
+    "source": "/go/:slug",
+    "destination": "/"
+  },
+  {
+    "source": "/course/:slug",
+    "destination": "/"
+  }
+]
 }
