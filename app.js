@@ -178,7 +178,9 @@
       const data = await api({ action: "bootstrap", token: state.token });
       state.user = data.user;
       state.settings = { ...state.settings, ...(data.settings || {}) };
-      state.modules = Array.isArray(data.modules) ? data.modules : [];
+      state.modules = Array.isArray(data.modules)
+        ? data.modules.map(module => ({ ...module, zone_no: resolveZoneNo(module) }))
+        : [];
       state.notes = Array.isArray(data.notes) ? data.notes : [];
       state.schedule = Array.isArray(data.schedule) ? data.schedule : [];
       state.announcements = Array.isArray(data.announcements) ? data.announcements : [];
@@ -505,13 +507,32 @@
     });
   }
 
+  function resolveZoneNo(module) {
+    const direct = Number(module?.zone_no);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+
+    const fromZoneId = String(module?.zone_id || "").match(/(\d+)/);
+    if (fromZoneId) return Number(fromZoneId[1]);
+
+    const fromModuleId = String(module?.module_id || "").match(/MOD-Z(\d+)-/i);
+    if (fromModuleId) return Number(fromModuleId[1]);
+
+    return "";
+  }
+
+  function zoneDisplayLabel(zone) {
+    return [zone?.zone_no, zone?.zone_name].filter(value => String(value ?? "").trim()).join(" ");
+  }
+
   function uniqueZones() {
     const map = new Map();
     state.modules.forEach(module => {
-      const key = String(module.zone_no || 0);
-      if (!map.has(key)) map.set(key, { zone_no: module.zone_no || 0, zone_name: module.zone_name || `Zona ${key}` });
+      const zoneNo = resolveZoneNo(module);
+      const zoneName = String(module.zone_name || "Materi").trim();
+      const key = zoneNo ? String(zoneNo) : `name:${zoneName}`;
+      if (!map.has(key)) map.set(key, { zone_no: zoneNo, zone_name: zoneName });
     });
-    return [...map.values()].sort((a, b) => a.zone_no - b.zone_no);
+    return [...map.values()].sort((a, b) => Number(a.zone_no || 9999) - Number(b.zone_no || 9999));
   }
 
   function navItem(view, label, icon, count = "") {
@@ -520,7 +541,7 @@
 
   function renderApp() {
     const zones = uniqueZones();
-    const zoneNav = zones.map(zone => navItem(`zone:${zone.zone_no}`, `Zona ${zone.zone_no} · ${zone.zone_name}`, icons.book, state.modules.filter(m => Number(m.zone_no) === Number(zone.zone_no)).length)).join("");
+    const zoneNav = zones.map(zone => navItem(`zone:${zone.zone_no}`, zoneDisplayLabel(zone), icons.book, state.modules.filter(m => Number(resolveZoneNo(m)) === Number(zone.zone_no)).length)).join("");
     const firstName = String(state.user?.name || "Member").split(" ")[0];
     app.innerHTML = `
       <div class="app-shell">
@@ -583,7 +604,7 @@
     if (state.currentView.startsWith("zone:")) {
       const zoneNo = Number(state.currentView.split(":")[1]);
       const zone = uniqueZones().find(z => Number(z.zone_no) === zoneNo);
-      return zone ? `Zona ${zone.zone_no} · ${zone.zone_name}` : "Materi";
+      return zone ? zoneDisplayLabel(zone) : "Materi";
     }
     if (state.currentView.startsWith("tool:")) return state.currentToolDetail?.tool?.tool_name || "Detail Tools";
     return ({ home: "Beranda", tools: "Produk & Tools", checklist: "Checklist Onboarding", schedule: "Jadwal Konsultasi", notes: "Catatan Saya", profile: "Pengaturan Profil", admin: "Pesanan & Akses" })[state.currentView] || "Beranda";
@@ -791,7 +812,7 @@
       <div class="section-head"><div><h2>Lanjutkan Belajar</h2><p>Modul pertama yang sudah terbuka dan belum selesai.</p></div></div>
       ${next ? `<section class="card next-module">
         <div class="next-module-media">${next.thumbnail_url ? `<img src="${escapeHtml(next.thumbnail_url)}" alt="" onerror="this.remove()">` : icons.play}</div>
-        <div class="next-module-copy"><span>Zona ${next.zone_no} · ${escapeHtml(next.zone_name)}</span><h3>${escapeHtml(next.title)}</h3><p>${escapeHtml(next.description)}</p></div>
+        <div class="next-module-copy"><span>${escapeHtml(zoneDisplayLabel(next))}</span><h3>${escapeHtml(next.title)}</h3><p>${escapeHtml(next.description)}</p></div>
         <button class="btn btn-primary" data-open-module="${escapeHtml(next.module_id)}">Mulai Modul ${icons.arrow}</button>
       </section>` : emptyState("Semua modul selesai", "Hebat! Kamu sudah menyelesaikan seluruh materi yang tersedia.")}
       <div class="section-head"><div><h2>Produk & Tools MRZ</h2><p>Lihat contoh hasil dan pilih tools yang sesuai kebutuhanmu.</p></div><button class="btn btn-outline" data-view="tools">Lihat Semua</button></div>
@@ -1081,7 +1102,7 @@
 
   function filteredModules() {
     let modules = [...state.modules];
-    if (state.selectedZone !== "all") modules = modules.filter(m => String(m.zone_no) === String(state.selectedZone));
+    if (state.selectedZone !== "all") modules = modules.filter(m => String(resolveZoneNo(m)) === String(state.selectedZone));
     const q = state.moduleSearch.trim().toLowerCase();
     if (q) modules = modules.filter(m => `${m.title} ${m.description} ${m.zone_name}`.toLowerCase().includes(q));
     return modules;
@@ -1093,7 +1114,7 @@
     const modules = filteredModules();
     const grouped = new Map();
     modules.forEach(m => {
-      const key = String(m.zone_no);
+      const key = String(resolveZoneNo(m));
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(m);
     });
@@ -1103,11 +1124,11 @@
         <div class="progress-row"><div class="progress-title"><h2>Progress Keseluruhan</h2><p>${state.progress.completed} dari ${state.progress.total} modul selesai.</p></div><div class="progress-number"><strong>${state.progress.percent}%</strong><span>TERSELESAIKAN</span></div></div>
         <div class="progress-track"><div style="width:${Math.min(100, Number(state.progress.percent || 0))}%"></div></div>
       </section>
-      <div class="zone-chips"><button class="zone-chip ${state.selectedZone === "all" ? "active" : ""}" data-zone="all">Semua Zona</button>${zones.map(z => `<button class="zone-chip ${String(state.selectedZone) === String(z.zone_no) ? "active" : ""}" data-zone="${z.zone_no}">Zona ${z.zone_no} · ${escapeHtml(z.zone_name)}</button>`).join("")}</div>
+      <div class="zone-chips"><button class="zone-chip ${state.selectedZone === "all" ? "active" : ""}" data-zone="all">Semua Materi</button>${zones.map(z => `<button class="zone-chip ${String(state.selectedZone) === String(z.zone_no) ? "active" : ""}" data-zone="${z.zone_no}">${escapeHtml(zoneDisplayLabel(z))}</button>`).join("")}</div>
       ${modules.length ? [...grouped.entries()].map(([zoneNo, items]) => {
         const zone = zones.find(z => String(z.zone_no) === zoneNo);
         const done = items.filter(x => x.is_completed).length;
-        return `<section class="zone-section"><div class="card zone-title-card"><div class="zone-number">${zoneNo}</div><div><h2>${escapeHtml(zone?.zone_name || `Zona ${zoneNo}`)}</h2><p>${done}/${items.length} modul selesai</p></div></div><div class="module-grid">${items.map(renderModuleCard).join("")}</div></section>`;
+        return `<section class="zone-section"><div class="card zone-title-card"><div class="zone-number">${zoneNo}</div><div><h2>${escapeHtml(zone?.zone_name || "Materi")}</h2><p>${done}/${items.length} modul selesai</p></div></div><div class="module-grid">${items.map(renderModuleCard).join("")}</div></section>`;
       }).join("") : emptyState("Modul tidak ditemukan", state.moduleSearch ? "Coba gunakan kata kunci lain." : "Belum ada modul pada zona ini.")}`;
   }
 
@@ -1136,7 +1157,7 @@
     return `
       <div class="page-head"><div><h1>Catatan Saya</h1><p>Simpan ide, rangkuman, dan langkah praktik untuk setiap modul.</p></div></div>
       ${state.modules.length ? `<div class="two-column">
-        <section class="card module-list">${state.modules.map(m => `<button class="module-list-item ${selected?.module_id === m.module_id ? "active" : ""}" data-note-module="${escapeHtml(m.module_id)}"><span>${m.sort_order}</span><div><strong>${escapeHtml(m.title)}</strong><small>Zona ${m.zone_no} · ${escapeHtml(m.zone_name)}</small></div></button>`).join("")}</section>
+        <section class="card module-list">${state.modules.map(m => `<button class="module-list-item ${selected?.module_id === m.module_id ? "active" : ""}" data-note-module="${escapeHtml(m.module_id)}"><span>${m.sort_order}</span><div><strong>${escapeHtml(m.title)}</strong><small>${escapeHtml(zoneDisplayLabel(m))}</small></div></button>`).join("")}</section>
         <section class="card editor-card"><h2>${escapeHtml(selected?.title || "Pilih modul")}</h2><p>Catatan ini hanya tersimpan untuk akunmu.</p><textarea id="note-text" placeholder="Tulis catatan di sini...">${escapeHtml(note?.note_text || "")}</textarea><div class="editor-footer"><button class="btn btn-primary" id="save-note">${icons.save} Simpan Catatan</button></div></section>
       </div>` : emptyState("Belum ada modul", "Tambahkan modul pada sheet MODULES terlebih dahulu.")}`;
   }
@@ -1301,7 +1322,7 @@
     const modal = document.createElement("div");
     modal.className = "modal-backdrop";
     modal.id = "module-modal";
-    modal.innerHTML = `<section class="modal"><header class="modal-head"><div><span class="small muted">Zona ${module.zone_no} · ${escapeHtml(module.zone_name)}</span><h2>${escapeHtml(module.title)}</h2></div><button class="icon-button" data-close-modal>${icons.close}</button></header><div class="modal-body">
+    modal.innerHTML = `<section class="modal"><header class="modal-head"><div><span class="small muted">${escapeHtml(zoneDisplayLabel(module))}</span><h2>${escapeHtml(module.title)}</h2></div><button class="icon-button" data-close-modal>${icons.close}</button></header><div class="modal-body">
       ${embed ? `<iframe class="video-frame" src="${escapeHtml(embed)}" title="${escapeHtml(module.title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>` : module.video_url ? `<div class="video-empty"><div><strong>Video eksternal</strong><p>Buka video melalui tombol di bawah.</p></div></div>` : `<div class="video-empty"><div>${icons.play}<strong style="display:block;margin-top:12px">Video belum dimasukkan</strong><p>Isi kolom video_url pada sheet MODULES.</p></div></div>`}
       <div class="modal-copy"><p>${escapeHtml(module.description)}</p><div class="modal-actions">${module.video_url && !embed ? `<a class="btn btn-primary" href="${escapeHtml(module.video_url)}" target="_blank" rel="noopener">Buka Video ${icons.arrow}</a>` : ""}${module.worksheet_url ? `<a class="btn btn-outline" href="${escapeHtml(module.worksheet_url)}" target="_blank" rel="noopener">${icons.worksheet} Buka Worksheet</a>` : ""}<button class="btn ${module.is_completed ? "complete-button completed" : "btn-accent"}" data-modal-complete="${escapeHtml(module.module_id)}">${module.is_completed ? `${icons.check} Sudah Selesai` : `${icons.check} Tandai Selesai`}</button></div></div>
     </div></section>`;
