@@ -5,16 +5,49 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
       ]
     }
   ],
   "rewrites": [
-    { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/checklist", "destination": "/index.html" },
-    { "source": "/jadwal", "destination": "/index.html" },
-    { "source": "/catatan", "destination": "/index.html" }
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/checklist",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/jadwal",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/catatan",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/p/:slug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/go/:slug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/course/:slug",
+      "destination": "/index.html"
+    }
   ]
 }
