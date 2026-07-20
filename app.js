@@ -287,25 +287,74 @@
     return true;
   }
 
+  function publicAssetUrl(value) {
+    const url = String(value || "").trim();
+    if (!url) return "";
+    if (/^(https?:)?\/\//i.test(url) || url.startsWith("data:") || url.startsWith("blob:")) return url;
+    if (url.startsWith("/")) return url;
+    return `/${url.replace(/^\.\//, "")}`;
+  }
+
+  function assetUrl(value) {
+    return publicAssetUrl(value);
+  }
+
+  function normalizePublicBenefits(value, fallback = []) {
+    const source = Array.isArray(value) ? value : value ? [value] : [];
+    const items = source
+      .flatMap(item => String(item || "")
+        .replace(/\r/g, "\n")
+        .replace(/([.!?])(?=[A-ZÀ-ÖØ-Þ])/g, "$1\n")
+        .split(/\n+|\s*[|•;]+\s*|(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-Þ])/g))
+      .map(item => item.trim().replace(/^[-–—✓✔]+\s*/, ""))
+      .filter(Boolean);
+
+    const result = items.length ? items : fallback;
+    return [...new Set(result)].slice(0, 6);
+  }
+
+  function publicProductName(product) {
+    return String(product?.name || product?.tool_name || product?.zone_name || "Produk MRZ Digital");
+  }
+
   function publicMedia(product) {
-    if (product.thumbnail_url) {
-      return `<img src="${escapeHtml(product.thumbnail_url)}" alt="${escapeHtml(product.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">\n        <div class="public-product-fallback" style="display:none">${product.product_type === "ZONE" ? escapeHtml(product.zone_no || "MRZ") : "MRZ"}</div>`;
+    const name = publicProductName(product);
+    const mediaUrl = publicAssetUrl(
+      product.thumbnail_url || product.hero_image_url || product.image_url || product.cover_url || ""
+    );
+
+    if (mediaUrl) {
+      return `<img src="${escapeHtml(assetUrl(mediaUrl))}" alt="${escapeHtml(name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
+        <div class="public-product-fallback" style="display:none"><span>${product.product_type === "ZONE" ? escapeHtml(product.zone_no || "MRZ") : "MRZ"}</span><small>${escapeHtml(name)}</small></div>`;
     }
-    return `<div class="public-product-fallback">${product.product_type === "ZONE" ? escapeHtml(product.zone_no || "MRZ") : "MRZ"}</div>`;
+
+    return `<div class="public-product-fallback"><span>${product.product_type === "ZONE" ? escapeHtml(product.zone_no || "MRZ") : "MRZ"}</span><small>${escapeHtml(name)}</small></div>`;
   }
 
   function renderPublicSamples(product) {
     const samples = Array.isArray(product.samples) ? product.samples : [];
     if (!samples.length) return "";
 
-    return `<section class="public-section"><div class="public-section-head"><span>CONTOH HASIL</span><h2>Lihat kualitas sebelum membeli</h2></div><div class="public-sample-grid">${samples.map(sample => {
+    return `<section class="public-section"><div class="public-section-head"><span>CONTOH HASIL</span><h2>Lihat kualitas sebelum membeli</h2><p>Preview dibuat lebih ringkas agar mudah dilihat dari desktop maupun HP.</p></div><div class="public-sample-grid">${samples.map(sample => {
       const type = String(sample.media_type || "IMAGE").toUpperCase();
-      const media = type === "VIDEO"
-        ? `<video controls preload="metadata" src="${escapeHtml(sample.url)}"></video>`
-        : type === "AUDIO"
-          ? `<div class="public-audio-wrap">${icons.headphones}<audio controls preload="metadata" src="${escapeHtml(sample.url)}"></audio></div>`
-          : `<img src="${escapeHtml(sample.url)}" alt="${escapeHtml(sample.title || "Contoh hasil")}">`;
-      return `<article class="public-sample-card">${media}<div><strong>${escapeHtml(sample.title || "Contoh hasil")}</strong><p>${escapeHtml(sample.description || "")}</p></div></article>`;
+      const url = publicAssetUrl(sample.url || sample.media_url || "");
+      const title = String(sample.title || "Contoh hasil");
+      let media = "";
+
+      if (type === "VIDEO") {
+        const videoId = youtubeVideoId(url);
+        const poster = videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : "";
+        media = `<button type="button" class="public-video-preview" data-public-sample-video data-video-url="${escapeHtml(url)}" data-video-title="${escapeHtml(title)}" aria-label="Putar ${escapeHtml(title)}">
+          ${poster ? `<img src="${escapeHtml(poster)}" alt="${escapeHtml(title)}">` : ""}
+          <span class="public-video-shade"></span><span class="public-video-play">${icons.play}</span><small>Putar Preview</small>
+        </button>`;
+      } else if (type === "AUDIO") {
+        media = `<div class="public-audio-wrap">${icons.headphones}<strong>Preview Audio</strong><audio controls preload="metadata" src="${escapeHtml(url)}"></audio></div>`;
+      } else {
+        media = `<div class="public-image-wrap"><img src="${escapeHtml(url)}" alt="${escapeHtml(title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="public-image-fallback" style="display:none">${icons.image}<span>Gambar belum dapat dimuat</span></div></div>`;
+      }
+
+      return `<article class="public-sample-card">${media}<div class="public-sample-copy"><strong>${escapeHtml(title)}</strong><p>${escapeHtml(sample.description || "")}</p></div></article>`;
     }).join("")}</div></section>`;
   }
 
@@ -313,7 +362,7 @@
     const modules = Array.isArray(product.modules) ? product.modules : [];
     if (!modules.length) return "";
 
-    return `<section class="public-section"><div class="public-section-head"><span>ISI COURSE</span><h2>${Number(product.module_count || modules.length)} modul terstruktur</h2></div><div class="public-module-list">${modules.map((module, index) => `<article><span>${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeHtml(module.title)}</strong><p>${escapeHtml(module.description || "")}</p></div><small>${Number(module.duration_minutes || 0)} menit</small></article>`).join("")}</div></section>`;
+    return `<section class="public-section"><div class="public-section-head"><span>ISI COURSE</span><h2>${Number(product.module_count || modules.length)} modul terstruktur</h2><p>Lihat gambaran materi sebelum melanjutkan ke member area.</p></div><div class="public-module-list">${modules.map((module, index) => `<article><span>${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeHtml(module.title)}</strong><p>${escapeHtml(module.description || "")}</p></div><small>${Number(module.duration_minutes || 0)} menit</small></article>`).join("")}</div></section>`;
   }
 
   function bindPublicProductEvents(product) {
@@ -332,41 +381,48 @@
       state.authMode = "register";
       renderLogin();
     }));
+
+    document.querySelectorAll("[data-public-sample-video]").forEach(button => button.addEventListener("click", () => {
+      openSampleVideo(button.dataset.videoUrl, button.dataset.videoTitle);
+    }));
   }
 
   function renderPublicProduct(product, settings = {}) {
     state.publicProduct = product;
     state.settings = { ...state.settings, ...(settings || {}) };
     applyTheme();
-    document.title = `${product.name} — ${state.settings.BRAND_NAME || "MRZ Digital"}`;
+    const productName = publicProductName(product);
+    document.title = `${productName} — ${state.settings.BRAND_NAME || "MRZ Digital"}`;
 
     const isZone = product.product_type === "ZONE";
     const price = Number(product.sale_price || 0);
     const original = Number(product.original_price || 0);
     const free = isZone && String(product.access_type || "").toUpperCase() === "FREE";
-    const benefits = Array.isArray(product.benefits) && product.benefits.length
-      ? product.benefits
-      : isZone
+    const benefits = normalizePublicBenefits(
+      product.benefits,
+      isZone
         ? ["Materi tersusun per modul", "Progress belajar tersimpan", "Akses melalui member area"]
-        : ["Akses tools melalui akun pribadi", "Modul penggunaan tersedia", "Contoh hasil dapat dilihat sebelum membeli"];
+        : ["Akses tools melalui akun pribadi", "Modul penggunaan tersedia", "Contoh hasil dapat dilihat sebelum membeli"]
+    );
 
     app.innerHTML = `<style>
-      .public-page{min-height:100vh;background:#fbf8f3;color:#2b2020}.public-header{height:76px;padding:0 max(24px,calc((100vw - 1240px)/2));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eadfce;background:rgba(255,255,255,.94);position:sticky;top:0;z-index:30;backdrop-filter:blur(14px)}
+      .public-page{min-height:100vh;background:#fbf8f3;color:#2b2020}.public-header{height:76px;padding:0 max(24px,calc((100vw - 1180px)/2));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eadfce;background:rgba(255,255,255,.94);position:sticky;top:0;z-index:30;backdrop-filter:blur(14px)}
       .public-brand{display:flex;align-items:center;gap:12px}.public-brand-logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#d4aa24,#f6db67);display:grid;place-items:center;color:#651425;font-weight:900}.public-brand strong{display:block}.public-brand small{display:block;color:#8c7e75;font-size:10px;letter-spacing:.14em;margin-top:2px}.public-header-actions{display:flex;gap:10px}
-      .public-main{max-width:1240px;margin:0 auto;padding:46px 24px 70px}.public-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);background:#fff;border:1px solid #eadfce;border-radius:30px;overflow:hidden;box-shadow:0 22px 60px rgba(80,20,32,.09)}
-      .public-visual{min-height:560px;background:linear-gradient(145deg,#4d0d1a,#7b1b2e);display:grid;place-items:center;padding:36px;overflow:hidden}.public-visual img{width:100%;height:100%;max-height:590px;object-fit:contain;border-radius:22px}.public-product-fallback{width:min(68%,360px);aspect-ratio:1;border-radius:28%;background:linear-gradient(135deg,#e2b82d,#f8dc68);display:grid;place-items:center;color:#641326;font-size:100px;font-weight:900;box-shadow:0 26px 60px rgba(0,0,0,.2)}
-      .public-copy{padding:64px 58px;display:flex;flex-direction:column;justify-content:center}.public-kicker{color:#bf9012;font-size:12px;font-weight:900;letter-spacing:.16em}.public-copy h1{font-size:clamp(38px,5vw,68px);line-height:1.04;margin:15px 0 20px;letter-spacing:-.04em}.public-lead{font-size:18px;line-height:1.75;color:#75675f;margin:0 0 25px}.public-meta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}.public-meta span{padding:8px 12px;border-radius:999px;background:#f6f0e7;border:1px solid #eadfce;font-size:12px;font-weight:800}.public-price{display:flex;align-items:flex-end;gap:14px;margin:6px 0 24px}.public-price del{color:#9f9189;font-size:16px}.public-price strong{color:#791427;font-size:34px}.public-price.free strong{color:#168a4f}
-      .public-cta{display:flex;gap:12px;flex-wrap:wrap}.public-trust{margin-top:18px;font-size:12px;color:#8d8078}.public-section{margin-top:28px;background:#fff;border:1px solid #eadfce;border-radius:26px;padding:34px}.public-section-head span{color:#b98e19;font-size:11px;font-weight:900;letter-spacing:.15em}.public-section-head h2{margin:8px 0 22px;font-size:28px}.public-benefits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.public-benefits div{padding:20px;border:1px solid #eee2d3;border-radius:18px;background:#fdfaf6;display:flex;gap:12px;align-items:flex-start}.public-benefits b{width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:#f3d65e;color:#671426;display:grid;place-items:center}
-      .public-sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.public-sample-card{overflow:hidden;border:1px solid #eadfce;border-radius:18px;background:#fdfaf6}.public-sample-card>img,.public-sample-card>video{width:100%;aspect-ratio:16/10;object-fit:cover;background:#2d1018}.public-sample-card>div:last-child{padding:16px}.public-sample-card p{margin:7px 0 0;color:#7d7068;font-size:13px;line-height:1.55}.public-audio-wrap{min-height:190px;background:linear-gradient(145deg,#4d0d1a,#7b1b2e);color:#f5d356;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:20px}.public-audio-wrap audio{width:85%}
+      .public-main{max-width:1180px;margin:0 auto;padding:38px 24px 68px}.public-hero{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);background:#fff;border:1px solid #eadfce;border-radius:28px;overflow:hidden;box-shadow:0 20px 55px rgba(80,20,32,.08)}
+      .public-visual{min-height:520px;background:linear-gradient(145deg,#4d0d1a,#7b1b2e);display:grid;place-items:center;padding:30px;overflow:hidden}.public-visual img{width:100%;height:100%;max-height:540px;object-fit:contain;border-radius:20px}.public-product-fallback{width:min(72%,340px);aspect-ratio:1;border-radius:25%;background:linear-gradient(135deg,#e2b82d,#f8dc68);display:grid;place-items:center;align-content:center;gap:12px;color:#641326;box-shadow:0 24px 55px rgba(0,0,0,.2);padding:24px;text-align:center}.public-product-fallback span{font-size:88px;font-weight:900;line-height:1}.public-product-fallback small{font-size:12px;font-weight:800;line-height:1.45;max-width:220px}
+      .public-copy{padding:52px 48px;display:flex;flex-direction:column;justify-content:center}.public-kicker{color:#bf9012;font-size:12px;font-weight:900;letter-spacing:.16em}.public-copy h1{font-size:clamp(36px,4.2vw,60px);line-height:1.04;margin:14px 0 18px;letter-spacing:-.04em}.public-lead{font-size:17px;line-height:1.7;color:#75675f;margin:0 0 22px}.public-meta{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:20px}.public-meta span{padding:7px 11px;border-radius:999px;background:#f6f0e7;border:1px solid #eadfce;font-size:11px;font-weight:800}.public-price{display:flex;align-items:flex-end;gap:12px;margin:4px 0 22px}.public-price del{color:#9f9189;font-size:15px}.public-price strong{color:#791427;font-size:32px}.public-price.free strong{color:#168a4f}
+      .public-cta{display:flex;gap:10px;flex-wrap:wrap}.public-cta .btn{min-height:44px}.public-trust{margin-top:16px;font-size:11px;line-height:1.55;color:#8d8078}.public-section{margin-top:26px;background:#fff;border:1px solid #eadfce;border-radius:24px;padding:30px}.public-section-head span{color:#b98e19;font-size:11px;font-weight:900;letter-spacing:.15em}.public-section-head h2{margin:7px 0 8px;font-size:27px}.public-section-head p{margin:0 0 22px;color:#8d8078;font-size:13px}
+      .public-benefits{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;grid-auto-rows:1fr;width:100%}.public-benefits div{width:100%;min-width:0;min-height:98px;padding:18px;border:1px solid #eee2d3;border-radius:16px;background:#fdfaf6;display:flex;gap:12px;align-items:flex-start;line-height:1.55}.public-benefits b{width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:#f3d65e;color:#671426;display:grid;place-items:center}
+      .public-sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.public-sample-card{overflow:hidden;border:1px solid #eadfce;border-radius:18px;background:#fdfaf6;display:flex;flex-direction:column;min-width:0}.public-sample-copy{padding:16px 16px 18px}.public-sample-copy strong{display:block;font-size:15px}.public-sample-card p{margin:7px 0 0;color:#7d7068;font-size:13px;line-height:1.55}.public-image-wrap,.public-video-preview{position:relative;width:100%;aspect-ratio:16/10;overflow:hidden;background:linear-gradient(145deg,#2d1018,#671426);border:0;padding:0}.public-image-wrap img,.public-video-preview img{width:100%;height:100%;object-fit:cover}.public-image-fallback{position:absolute;inset:0;place-items:center;align-content:center;gap:10px;color:#f5d356}.public-video-preview{cursor:pointer;color:#fff}.public-video-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,5,10,.06),rgba(34,8,15,.72))}.public-video-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58px;height:58px;border-radius:50%;background:#f2d258;color:#651425;display:grid;place-items:center;box-shadow:0 12px 30px rgba(0,0,0,.25)}.public-video-preview small{position:absolute;left:16px;bottom:14px;font-weight:800}.public-audio-wrap{min-height:190px;background:linear-gradient(145deg,#4d0d1a,#7b1b2e);color:#f5d356;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:20px}.public-audio-wrap audio{width:92%}
       .public-module-list{display:grid;gap:12px}.public-module-list article{display:grid;grid-template-columns:46px 1fr auto;gap:14px;align-items:center;padding:17px;border:1px solid #eadfce;border-radius:16px}.public-module-list article>span{width:42px;height:42px;border-radius:13px;background:#f5e8b3;color:#6a1525;display:grid;place-items:center;font-weight:900}.public-module-list strong{display:block}.public-module-list p{margin:5px 0 0;color:#7d7068;font-size:13px}.public-module-list small{color:#8d8078}
-      .public-footer{text-align:center;padding:34px 20px;color:#8d8078;font-size:12px}.public-error{max-width:720px;margin:100px auto;padding:34px;text-align:center;background:#fff;border:1px solid #eadfce;border-radius:24px}
-      @media(max-width:900px){.public-hero{grid-template-columns:1fr}.public-visual{min-height:380px}.public-copy{padding:42px 30px}.public-benefits,.public-sample-grid{grid-template-columns:1fr}.public-header{padding:0 18px}.public-main{padding:24px 14px 50px}.public-header-actions .btn-outline{display:none}}
+      .public-footer{text-align:center;padding:32px 20px;color:#8d8078;font-size:12px}.public-error{max-width:720px;margin:100px auto;padding:34px;text-align:center;background:#fff;border:1px solid #eadfce;border-radius:24px}
+      @media(max-width:900px){.public-hero{grid-template-columns:1fr}.public-visual{min-height:360px}.public-copy{padding:38px 28px}.public-benefits,.public-sample-grid{grid-template-columns:1fr}.public-header{padding:0 18px}.public-main{padding:22px 14px 48px}.public-header-actions .btn-outline{display:none}.public-product-fallback{width:min(64%,280px)}.public-product-fallback span{font-size:72px}}
     </style>
     <div class="public-page">
       <header class="public-header"><div class="public-brand"><div class="public-brand-logo">MRZ</div><div><strong>${escapeHtml(state.settings.BRAND_NAME || "MRZ Digital")}</strong><small>DIGITAL ACADEMY</small></div></div><div class="public-header-actions"><button class="btn btn-outline" data-public-register>Daftar</button><button class="btn btn-primary" data-public-login>Masuk</button></div></header>
       <main class="public-main">
-        <section class="public-hero"><div class="public-visual">${publicMedia(product)}</div><div class="public-copy"><span class="public-kicker">${isZone ? `COURSE · ZONA ${escapeHtml(product.zone_no || "")}` : "TOOLS DIGITAL MRZ"}</span><h1>${escapeHtml(product.headline || product.name)}</h1><p class="public-lead">${escapeHtml(product.subheadline || product.description || "Buka akses produk MRZ Digital melalui akun pribadi Anda.")}</p><div class="public-meta">${isZone ? `<span>${Number(product.module_count || 0)} modul</span><span>${String(product.access_type || "PAID").toUpperCase()}</span>` : `<span>Akses akun pribadi</span><span>Modul penggunaan</span>`}</div><div class="public-price ${free ? "free" : ""}">${free ? `<strong>GRATIS</strong>` : `${original > price ? `<del>${formatCurrency(original)}</del>` : ""}<strong>${formatCurrency(price)}</strong>`}</div><div class="public-cta"><button class="btn btn-accent" data-public-buy>${free ? "Masuk untuk Mulai" : escapeHtml(product.purchase_label || "Beli Sekarang")} ${icons.arrow}</button><button class="btn btn-outline" data-public-login>Sudah punya akun</button></div><div class="public-trust">Halaman produk dapat dilihat tanpa login. Login/daftar baru diperlukan saat melanjutkan akses atau checkout.</div></div></section>
-        <section class="public-section"><div class="public-section-head"><span>YANG DIDAPATKAN</span><h2>Akses melalui satu member area</h2></div><div class="public-benefits">${benefits.slice(0,6).map(item => `<div><b>✓</b><span>${escapeHtml(item)}</span></div>`).join("")}</div></section>
+        <section class="public-hero"><div class="public-visual">${publicMedia(product)}</div><div class="public-copy"><span class="public-kicker">${isZone ? `COURSE · ZONA ${escapeHtml(product.zone_no || "")}` : "TOOLS DIGITAL MRZ"}</span><h1>${escapeHtml(product.headline || productName)}</h1><p class="public-lead">${escapeHtml(product.subheadline || product.description || "Buka akses produk MRZ Digital melalui akun pribadi Anda.")}</p><div class="public-meta">${isZone ? `<span>${Number(product.module_count || 0)} modul</span><span>${String(product.access_type || "PAID").toUpperCase()}</span>` : `<span>Akses akun pribadi</span><span>Modul penggunaan</span>`}</div><div class="public-price ${free ? "free" : ""}">${free ? `<strong>GRATIS</strong>` : `${original > price ? `<del>${formatCurrency(original)}</del>` : ""}<strong>${formatCurrency(price)}</strong>`}</div><div class="public-cta"><button class="btn btn-accent" data-public-buy>${free ? "Masuk untuk Mulai" : escapeHtml(product.purchase_label || "Beli Sekarang")} ${icons.arrow}</button><button class="btn btn-outline" data-public-login>Sudah punya akun</button></div><div class="public-trust">Halaman produk dapat dilihat tanpa login. Login/daftar baru diperlukan saat melanjutkan akses atau checkout.</div></div></section>
+        <section class="public-section"><div class="public-section-head"><span>YANG DIDAPATKAN</span><h2>Akses melalui satu member area</h2><p>Manfaat utama ditampilkan dalam poin yang lebih mudah dibaca.</p></div><div class="public-benefits">${benefits.map(item => `<div><b>✓</b><span>${escapeHtml(item)}</span></div>`).join("")}</div></section>
         ${isZone ? renderPublicModules(product) : renderPublicSamples(product)}
       </main>
       <footer class="public-footer">© ${new Date().getFullYear()} ${escapeHtml(state.settings.BRAND_NAME || "MRZ Digital")} · Halaman penawaran resmi.</footer>
@@ -1108,7 +1164,7 @@
       </section>
       <div class="section-head"><div><h2>Lanjutkan Belajar</h2><p>Modul pertama yang sudah terbuka dan belum selesai.</p></div></div>
       ${next ? `<section class="card next-module">
-        <div class="next-module-media">${next.thumbnail_url ? `<img src="${escapeHtml(next.thumbnail_url)}" alt="" onerror="this.remove()">` : icons.play}</div>
+        <div class="next-module-media">${next.thumbnail_url ? `<img src="${escapeHtml(assetUrl(next.thumbnail_url))}" alt="" onerror="this.remove()">` : icons.play}</div>
         <div class="next-module-copy"><span>${escapeHtml(zoneDisplayLabel(next))}</span><h3>${escapeHtml(next.title)}</h3><p>${escapeHtml(next.description)}</p></div>
         <button class="btn btn-primary" data-open-module="${escapeHtml(next.module_id)}">Mulai Modul ${icons.arrow}</button>
       </section>` : emptyState("Semua modul selesai", "Hebat! Kamu sudah menyelesaikan seluruh materi yang tersedia.")}
@@ -1140,7 +1196,7 @@
 
   function renderToolCard(tool) {
     return `<article class="card tool-card">
-      <div class="tool-card-media">${tool.thumbnail_url ? `<img src="${escapeHtml(tool.thumbnail_url)}" alt="${escapeHtml(tool.tool_name)}" onerror="this.remove()">` : icons.tools}<span class="access-badge ${tool.has_access ? "open" : "locked"}">${tool.has_access ? "AKSES AKTIF" : "FREE PREVIEW"}</span></div>
+      <div class="tool-card-media">${tool.thumbnail_url ? `<img src="${escapeHtml(assetUrl(tool.thumbnail_url))}" alt="${escapeHtml(tool.tool_name)}" onerror="this.remove()">` : icons.tools}<span class="access-badge ${tool.has_access ? "open" : "locked"}">${tool.has_access ? "AKSES AKTIF" : "FREE PREVIEW"}</span></div>
       <div class="tool-card-body"><div class="tool-type">DIGITAL TOOL</div><h3>${escapeHtml(tool.tool_name)}</h3><p>${escapeHtml(tool.short_description)}</p>
       <div class="price-row"><div><del>${formatCurrency(tool.original_price)}</del><strong>${formatCurrency(tool.sale_price)}</strong></div><button class="btn btn-primary" data-open-tool="${escapeHtml(tool.tool_id)}">Lihat Detail ${icons.arrow}</button></div></div>
     </article>`;
@@ -1166,7 +1222,7 @@
           <div class="tool-hero-actions">${tool.has_access ? activeHeroButton : `<button class="btn btn-accent" data-buy-tool="${escapeHtml(tool.tool_id)}">${escapeHtml(tool.purchase_label || "Beli Akses")}</button>`}<button class="btn btn-outline" data-tool-tab="modules">Lihat Modul</button></div>
           <div class="price-stack"><del>${formatCurrency(tool.original_price)}</del><strong>${formatCurrency(tool.sale_price)}</strong><span>Sekali bayar</span></div>
         </div>
-        <div class="tool-hero-media">${tool.thumbnail_url ? `<img src="${escapeHtml(tool.thumbnail_url)}" alt="${escapeHtml(tool.tool_name)}">` : icons.headphones}</div>
+        <div class="tool-hero-media">${tool.thumbnail_url ? `<img src="${escapeHtml(assetUrl(tool.thumbnail_url))}" alt="${escapeHtml(tool.tool_name)}">` : icons.headphones}</div>
       </section>
       <nav class="tool-tabs">
         <button class="tool-tab ${tab === "summary" ? "active" : ""}" data-tool-tab="summary">Ringkasan</button>
@@ -1202,13 +1258,13 @@
         <button
           type="button"
           data-sample-image
-          data-image-url="${escapeHtml(mediaUrl)}"
+          data-image-url="${escapeHtml(assetUrl(mediaUrl))}"
           data-image-title="${escapeHtml(title)}"
           style="position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;background:linear-gradient(135deg,#f8f1e7,#ead9c7);box-shadow:0 14px 34px rgba(48,10,20,.12)"
           aria-label="Lihat gambar ${escapeHtml(title)}"
         >
           <img
-            src="${escapeHtml(mediaUrl)}"
+            src="${escapeHtml(assetUrl(mediaUrl))}"
             alt="${escapeHtml(title)}"
             loading="lazy"
             style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
@@ -1241,7 +1297,7 @@
         <button
           type="button"
           data-sample-video
-          data-video-url="${escapeHtml(mediaUrl)}"
+          data-video-url="${escapeHtml(assetUrl(mediaUrl))}"
           data-video-title="${escapeHtml(title)}"
           style="position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:0;border-radius:18px;padding:0;cursor:pointer;background:linear-gradient(135deg,#210b13,#5f1727);box-shadow:0 14px 34px rgba(48,10,20,.18)"
           aria-label="Putar ${escapeHtml(title)}"
@@ -1261,7 +1317,7 @@
 
     return `
       <div class="premium-audio-player" data-audio-player>
-        <audio preload="metadata" src="${escapeHtml(mediaUrl)}"></audio>
+        <audio preload="metadata" src="${escapeHtml(assetUrl(mediaUrl))}"></audio>
         <button type="button" class="audio-play-button" data-audio-play aria-label="Putar audio">▶</button>
         <div class="audio-player-main">
           <div class="audio-player-topline">
@@ -1433,7 +1489,7 @@
     const busy = state.busyModules.has(module.module_id);
     return `<article class="card module-card ${module.is_locked ? "locked" : ""}">
       <div class="module-media">
-        ${module.thumbnail_url ? `<img src="${escapeHtml(module.thumbnail_url)}" alt="Thumbnail ${escapeHtml(module.title)}" onerror="this.remove()">` : ""}
+        ${module.thumbnail_url ? `<img src="${escapeHtml(assetUrl(module.thumbnail_url))}" alt="Thumbnail ${escapeHtml(module.title)}" onerror="this.remove()">` : ""}
         <span class="module-index">${String(module.sort_order || "").padStart(2,"0")}</span>
         ${module.is_locked ? `<span class="module-lock">${icons.lock}</span>` : `<span class="play-circle">${icons.play}</span>`}
       </div>
@@ -1877,7 +1933,7 @@
 
       <div class="modal-body purchase-body">
         <div class="checkout-summary">
-          <img src="${escapeHtml(tool.thumbnail_url || "/assets/mrz-voice-over-pro.png")}" alt="">
+          <img src="${escapeHtml(assetUrl(tool.thumbnail_url || "/assets/mrz-voice-over-pro.png"))}" alt="">
           <div>
             <del>${formatCurrency(tool.original_price)}</del>
             <strong>${formatCurrency(tool.sale_price)}</strong>
@@ -2690,7 +2746,7 @@
           const price = Number(zone.sale_price || 0);
           return `<article class="card zone-product-card">
             <div class="zone-product-media">
-              ${zone.thumbnail_url ? `<img src="${escapeHtml(zone.thumbnail_url)}" alt="${escapeHtml(zone.zone_name)}" onerror="this.remove()">` : `<div class="zone-product-placeholder">${escapeHtml(zone.zone_no)}</div>`}
+              ${zone.thumbnail_url ? `<img src="${escapeHtml(assetUrl(zone.thumbnail_url))}" alt="${escapeHtml(zone.zone_name)}" onerror="this.remove()">` : `<div class="zone-product-placeholder">${escapeHtml(zone.zone_no)}</div>`}
             </div>
             <div class="zone-product-copy">
               <span class="access-badge ${zoneStatusClass(zone)}">${escapeHtml(zoneStatusText(zone))}</span>
@@ -2738,7 +2794,7 @@
       <div class="tool-page-head"><button class="back-link" data-view="checklist">← Kembali ke Materi Belajar</button><span class="access-badge ${zoneStatusClass(zone)}">${escapeHtml(zoneStatusText(zone))}</span></div>
       <section class="card academy-zone-hero">
         <div class="academy-zone-visual">
-          ${zone.thumbnail_url ? `<img src="${escapeHtml(zone.thumbnail_url)}" alt="${escapeHtml(zone.zone_name)}" onerror="this.remove()">` : `<div class="academy-zone-number">${escapeHtml(zone.zone_no)}</div>`}
+          ${zone.thumbnail_url ? `<img src="${escapeHtml(assetUrl(zone.thumbnail_url))}" alt="${escapeHtml(zone.zone_name)}" onerror="this.remove()">` : `<div class="academy-zone-number">${escapeHtml(zone.zone_no)}</div>`}
         </div>
         <div class="academy-zone-copy">
           <span class="hero-kicker">ZONA ${escapeHtml(zone.zone_no)} · ${escapeHtml(zone.access_type)}</span>
@@ -2773,7 +2829,7 @@
 
     return `<article class="card module-card ${module.is_locked ? "locked" : ""}">
       <div class="module-media">
-        ${module.thumbnail_url ? `<img src="${escapeHtml(module.thumbnail_url)}" alt="Thumbnail ${escapeHtml(module.title)}" onerror="this.remove()">` : ""}
+        ${module.thumbnail_url ? `<img src="${escapeHtml(assetUrl(module.thumbnail_url))}" alt="Thumbnail ${escapeHtml(module.title)}" onerror="this.remove()">` : ""}
         <span class="module-index">${String(module.sort_order || "").padStart(2,"0")}</span>
         ${module.is_locked ? `<span class="module-lock">${icons.lock}</span>` : `<span class="play-circle">${icons.play}</span>`}
       </div>
@@ -2799,7 +2855,7 @@
       <header class="modal-head"><div><span class="small muted">CHECKOUT ZONA ACADEMY</span><h2>${escapeHtml(zone.zone_name)}</h2></div><button class="icon-button" data-close-modal>${icons.close}</button></header>
       <div class="modal-body purchase-body">
         <div class="checkout-summary">
-          ${zone.thumbnail_url ? `<img src="${escapeHtml(zone.thumbnail_url)}" alt="">` : `<div class="academy-zone-number" style="width:86px;height:86px;font-size:36px;border-radius:22px">${escapeHtml(zone.zone_no)}</div>`}
+          ${zone.thumbnail_url ? `<img src="${escapeHtml(assetUrl(zone.thumbnail_url))}" alt="">` : `<div class="academy-zone-number" style="width:86px;height:86px;font-size:36px;border-radius:22px">${escapeHtml(zone.zone_no)}</div>`}
           <div><del>${formatCurrency(zone.original_price)}</del><strong>${formatCurrency(zone.sale_price)}</strong><p>Sekali bayar · membuka seluruh modul pada Zona ini</p></div>
         </div>
         <form id="zone-purchase-form">
