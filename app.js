@@ -3,6 +3,7 @@
 
   const API_ENDPOINT = "/api/mrz";
   const STORAGE_KEY = "mrz_academy_session_v1";
+  const PUBLIC_PURCHASE_KEY = "mrz_public_purchase_pending_v1";
 
   const state = {
     token: "",
@@ -26,6 +27,9 @@
     currentToolDetail: null,
     currentToolLoading: false,
     toolTab: "summary",
+    publicRoute: null,
+    publicProduct: null,
+    publicLoading: false,
     authMode: "login",
     resetToken: "",
     resetEmail: "",
@@ -158,6 +162,242 @@
     return false;
   }
 
+  function publicSlug(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function parsePublicRoute() {
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, "");
+    const parts = path ? path.split("/").map(decodeURIComponent) : [];
+    const prefix = String(parts[0] || "").toLowerCase();
+    const slug = String(parts.slice(1).join("/") || "").trim();
+
+    if (["p", "go", "course"].includes(prefix) && slug) {
+      return {
+        prefix,
+        slug,
+        product_type: prefix === "course" ? "ZONE" : ""
+      };
+    }
+
+    const query = new URLSearchParams(window.location.search);
+    const product = String(query.get("product") || "").trim();
+    if (product) {
+      return {
+        prefix: "p",
+        slug: product,
+        product_type: String(query.get("type") || "").toUpperCase()
+      };
+    }
+
+    return null;
+  }
+
+  function savePendingPublicPurchase(product) {
+    if (!product) return;
+    localStorage.setItem(PUBLIC_PURCHASE_KEY, JSON.stringify({
+      product_type: String(product.product_type || "").toUpperCase(),
+      product_id: String(product.product_id || ""),
+      slug: String(product.slug || product.product_id || ""),
+      auto_checkout: true,
+      created_at: Date.now()
+    }));
+  }
+
+  function readPendingPublicPurchase() {
+    try {
+      const value = JSON.parse(localStorage.getItem(PUBLIC_PURCHASE_KEY) || "null");
+      if (!value || !value.product_id) return null;
+      if (Date.now() - Number(value.created_at || 0) > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(PUBLIC_PURCHASE_KEY);
+        return null;
+      }
+      return value;
+    } catch {
+      localStorage.removeItem(PUBLIC_PURCHASE_KEY);
+      return null;
+    }
+  }
+
+  function resolveRouteTarget(route) {
+    if (!route) return null;
+    const key = String(route.slug || "").toLowerCase();
+    const preferZone = String(route.product_type || "").toUpperCase() === "ZONE";
+
+    const findTool = () => state.tools.find(tool =>
+      String(tool.tool_id || "").toLowerCase() === key ||
+      String(tool.slug || "").toLowerCase() === key ||
+      publicSlug(tool.tool_name) === publicSlug(key)
+    );
+
+    const findZone = () => uniqueZones().find(zone =>
+      String(zone.zone_id || "").toLowerCase() === key ||
+      publicSlug(zone.zone_name) === publicSlug(key) ||
+      publicSlug(zone.headline) === publicSlug(key)
+    );
+
+    const first = preferZone ? findZone() : findTool();
+    const second = preferZone ? findTool() : findZone();
+    const item = first || second;
+    if (!item) return null;
+
+    if (item.tool_id) {
+      return { product_type: "TOOL", product_id: item.tool_id, item };
+    }
+    return { product_type: "ZONE", product_id: item.zone_id, item };
+  }
+
+  async function applyPublicDestinationAfterAuth() {
+    const pending = readPendingPublicPurchase();
+    const routeTarget = resolveRouteTarget(state.publicRoute || parsePublicRoute());
+    const target = pending || routeTarget;
+    if (!target) return false;
+
+    const type = String(target.product_type || "").toUpperCase();
+    const productId = String(target.product_id || "");
+    const shouldCheckout = Boolean(pending?.auto_checkout);
+
+    if (type === "TOOL") {
+      state.currentView = `tool:${productId}`;
+      state.currentToolDetail = null;
+      state.currentToolLoading = true;
+      state.toolTab = "summary";
+      await loadToolDetail(productId);
+      if (shouldCheckout && state.currentToolDetail?.tool && !state.currentToolDetail.tool.has_access) {
+        setTimeout(() => startPurchase(productId), 120);
+      }
+    } else if (type === "ZONE") {
+      state.currentView = `zone:${productId}`;
+      state.selectedZone = productId;
+      renderApp();
+      const zone = uniqueZones().find(item => String(item.zone_id) === productId);
+      if (shouldCheckout && zone && !zone.has_access && String(zone.access_type).toUpperCase() === "PAID") {
+        setTimeout(() => startZonePurchase(productId), 120);
+      }
+    } else {
+      return false;
+    }
+
+    if (pending) localStorage.removeItem(PUBLIC_PURCHASE_KEY);
+    return true;
+  }
+
+  function publicMedia(product) {
+    if (product.thumbnail_url) {
+      return `<img src="${escapeHtml(product.thumbnail_url)}" alt="${escapeHtml(product.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">\n        <div class="public-product-fallback" style="display:none">${product.product_type === "ZONE" ? escapeHtml(product.zone_no || "MRZ") : "MRZ"}</div>`;
+    }
+    return `<div class="public-product-fallback">${product.product_type === "ZONE" ? escapeHtml(product.zone_no || "MRZ") : "MRZ"}</div>`;
+  }
+
+  function renderPublicSamples(product) {
+    const samples = Array.isArray(product.samples) ? product.samples : [];
+    if (!samples.length) return "";
+
+    return `<section class="public-section"><div class="public-section-head"><span>CONTOH HASIL</span><h2>Lihat kualitas sebelum membeli</h2></div><div class="public-sample-grid">${samples.map(sample => {
+      const type = String(sample.media_type || "IMAGE").toUpperCase();
+      const media = type === "VIDEO"
+        ? `<video controls preload="metadata" src="${escapeHtml(sample.url)}"></video>`
+        : type === "AUDIO"
+          ? `<div class="public-audio-wrap">${icons.headphones}<audio controls preload="metadata" src="${escapeHtml(sample.url)}"></audio></div>`
+          : `<img src="${escapeHtml(sample.url)}" alt="${escapeHtml(sample.title || "Contoh hasil")}">`;
+      return `<article class="public-sample-card">${media}<div><strong>${escapeHtml(sample.title || "Contoh hasil")}</strong><p>${escapeHtml(sample.description || "")}</p></div></article>`;
+    }).join("")}</div></section>`;
+  }
+
+  function renderPublicModules(product) {
+    const modules = Array.isArray(product.modules) ? product.modules : [];
+    if (!modules.length) return "";
+
+    return `<section class="public-section"><div class="public-section-head"><span>ISI COURSE</span><h2>${Number(product.module_count || modules.length)} modul terstruktur</h2></div><div class="public-module-list">${modules.map((module, index) => `<article><span>${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeHtml(module.title)}</strong><p>${escapeHtml(module.description || "")}</p></div><small>${Number(module.duration_minutes || 0)} menit</small></article>`).join("")}</div></section>`;
+  }
+
+  function bindPublicProductEvents(product) {
+    document.querySelectorAll("[data-public-buy]").forEach(button => button.addEventListener("click", () => {
+      savePendingPublicPurchase(product);
+      state.authMode = "login";
+      renderLogin("", "Silakan masuk atau daftar. Setelah itu checkout produk ini akan terbuka otomatis.");
+    }));
+
+    document.querySelectorAll("[data-public-login]").forEach(button => button.addEventListener("click", () => {
+      state.authMode = "login";
+      renderLogin();
+    }));
+
+    document.querySelectorAll("[data-public-register]").forEach(button => button.addEventListener("click", () => {
+      state.authMode = "register";
+      renderLogin();
+    }));
+  }
+
+  function renderPublicProduct(product, settings = {}) {
+    state.publicProduct = product;
+    state.settings = { ...state.settings, ...(settings || {}) };
+    applyTheme();
+    document.title = `${product.name} — ${state.settings.BRAND_NAME || "MRZ Digital"}`;
+
+    const isZone = product.product_type === "ZONE";
+    const price = Number(product.sale_price || 0);
+    const original = Number(product.original_price || 0);
+    const free = isZone && String(product.access_type || "").toUpperCase() === "FREE";
+    const benefits = Array.isArray(product.benefits) && product.benefits.length
+      ? product.benefits
+      : isZone
+        ? ["Materi tersusun per modul", "Progress belajar tersimpan", "Akses melalui member area"]
+        : ["Akses tools melalui akun pribadi", "Modul penggunaan tersedia", "Contoh hasil dapat dilihat sebelum membeli"];
+
+    app.innerHTML = `<style>
+      .public-page{min-height:100vh;background:#fbf8f3;color:#2b2020}.public-header{height:76px;padding:0 max(24px,calc((100vw - 1240px)/2));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eadfce;background:rgba(255,255,255,.94);position:sticky;top:0;z-index:30;backdrop-filter:blur(14px)}
+      .public-brand{display:flex;align-items:center;gap:12px}.public-brand-logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#d4aa24,#f6db67);display:grid;place-items:center;color:#651425;font-weight:900}.public-brand strong{display:block}.public-brand small{display:block;color:#8c7e75;font-size:10px;letter-spacing:.14em;margin-top:2px}.public-header-actions{display:flex;gap:10px}
+      .public-main{max-width:1240px;margin:0 auto;padding:46px 24px 70px}.public-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);background:#fff;border:1px solid #eadfce;border-radius:30px;overflow:hidden;box-shadow:0 22px 60px rgba(80,20,32,.09)}
+      .public-visual{min-height:560px;background:linear-gradient(145deg,#4d0d1a,#7b1b2e);display:grid;place-items:center;padding:36px;overflow:hidden}.public-visual img{width:100%;height:100%;max-height:590px;object-fit:contain;border-radius:22px}.public-product-fallback{width:min(68%,360px);aspect-ratio:1;border-radius:28%;background:linear-gradient(135deg,#e2b82d,#f8dc68);display:grid;place-items:center;color:#641326;font-size:100px;font-weight:900;box-shadow:0 26px 60px rgba(0,0,0,.2)}
+      .public-copy{padding:64px 58px;display:flex;flex-direction:column;justify-content:center}.public-kicker{color:#bf9012;font-size:12px;font-weight:900;letter-spacing:.16em}.public-copy h1{font-size:clamp(38px,5vw,68px);line-height:1.04;margin:15px 0 20px;letter-spacing:-.04em}.public-lead{font-size:18px;line-height:1.75;color:#75675f;margin:0 0 25px}.public-meta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}.public-meta span{padding:8px 12px;border-radius:999px;background:#f6f0e7;border:1px solid #eadfce;font-size:12px;font-weight:800}.public-price{display:flex;align-items:flex-end;gap:14px;margin:6px 0 24px}.public-price del{color:#9f9189;font-size:16px}.public-price strong{color:#791427;font-size:34px}.public-price.free strong{color:#168a4f}
+      .public-cta{display:flex;gap:12px;flex-wrap:wrap}.public-trust{margin-top:18px;font-size:12px;color:#8d8078}.public-section{margin-top:28px;background:#fff;border:1px solid #eadfce;border-radius:26px;padding:34px}.public-section-head span{color:#b98e19;font-size:11px;font-weight:900;letter-spacing:.15em}.public-section-head h2{margin:8px 0 22px;font-size:28px}.public-benefits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.public-benefits div{padding:20px;border:1px solid #eee2d3;border-radius:18px;background:#fdfaf6;display:flex;gap:12px;align-items:flex-start}.public-benefits b{width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:#f3d65e;color:#671426;display:grid;place-items:center}
+      .public-sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.public-sample-card{overflow:hidden;border:1px solid #eadfce;border-radius:18px;background:#fdfaf6}.public-sample-card>img,.public-sample-card>video{width:100%;aspect-ratio:16/10;object-fit:cover;background:#2d1018}.public-sample-card>div:last-child{padding:16px}.public-sample-card p{margin:7px 0 0;color:#7d7068;font-size:13px;line-height:1.55}.public-audio-wrap{min-height:190px;background:linear-gradient(145deg,#4d0d1a,#7b1b2e);color:#f5d356;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:20px}.public-audio-wrap audio{width:85%}
+      .public-module-list{display:grid;gap:12px}.public-module-list article{display:grid;grid-template-columns:46px 1fr auto;gap:14px;align-items:center;padding:17px;border:1px solid #eadfce;border-radius:16px}.public-module-list article>span{width:42px;height:42px;border-radius:13px;background:#f5e8b3;color:#6a1525;display:grid;place-items:center;font-weight:900}.public-module-list strong{display:block}.public-module-list p{margin:5px 0 0;color:#7d7068;font-size:13px}.public-module-list small{color:#8d8078}
+      .public-footer{text-align:center;padding:34px 20px;color:#8d8078;font-size:12px}.public-error{max-width:720px;margin:100px auto;padding:34px;text-align:center;background:#fff;border:1px solid #eadfce;border-radius:24px}
+      @media(max-width:900px){.public-hero{grid-template-columns:1fr}.public-visual{min-height:380px}.public-copy{padding:42px 30px}.public-benefits,.public-sample-grid{grid-template-columns:1fr}.public-header{padding:0 18px}.public-main{padding:24px 14px 50px}.public-header-actions .btn-outline{display:none}}
+    </style>
+    <div class="public-page">
+      <header class="public-header"><div class="public-brand"><div class="public-brand-logo">MRZ</div><div><strong>${escapeHtml(state.settings.BRAND_NAME || "MRZ Digital")}</strong><small>DIGITAL ACADEMY</small></div></div><div class="public-header-actions"><button class="btn btn-outline" data-public-register>Daftar</button><button class="btn btn-primary" data-public-login>Masuk</button></div></header>
+      <main class="public-main">
+        <section class="public-hero"><div class="public-visual">${publicMedia(product)}</div><div class="public-copy"><span class="public-kicker">${isZone ? `COURSE · ZONA ${escapeHtml(product.zone_no || "")}` : "TOOLS DIGITAL MRZ"}</span><h1>${escapeHtml(product.headline || product.name)}</h1><p class="public-lead">${escapeHtml(product.subheadline || product.description || "Buka akses produk MRZ Digital melalui akun pribadi Anda.")}</p><div class="public-meta">${isZone ? `<span>${Number(product.module_count || 0)} modul</span><span>${String(product.access_type || "PAID").toUpperCase()}</span>` : `<span>Akses akun pribadi</span><span>Modul penggunaan</span>`}</div><div class="public-price ${free ? "free" : ""}">${free ? `<strong>GRATIS</strong>` : `${original > price ? `<del>${formatCurrency(original)}</del>` : ""}<strong>${formatCurrency(price)}</strong>`}</div><div class="public-cta"><button class="btn btn-accent" data-public-buy>${free ? "Masuk untuk Mulai" : escapeHtml(product.purchase_label || "Beli Sekarang")} ${icons.arrow}</button><button class="btn btn-outline" data-public-login>Sudah punya akun</button></div><div class="public-trust">Halaman produk dapat dilihat tanpa login. Login/daftar baru diperlukan saat melanjutkan akses atau checkout.</div></div></section>
+        <section class="public-section"><div class="public-section-head"><span>YANG DIDAPATKAN</span><h2>Akses melalui satu member area</h2></div><div class="public-benefits">${benefits.slice(0,6).map(item => `<div><b>✓</b><span>${escapeHtml(item)}</span></div>`).join("")}</div></section>
+        ${isZone ? renderPublicModules(product) : renderPublicSamples(product)}
+      </main>
+      <footer class="public-footer">© ${new Date().getFullYear()} ${escapeHtml(state.settings.BRAND_NAME || "MRZ Digital")} · Halaman penawaran resmi.</footer>
+    </div>`;
+
+    bindPublicProductEvents(product);
+  }
+
+  function renderPublicError(message) {
+    applyTheme();
+    app.innerHTML = `<div class="public-page"><div class="public-error"><div class="logo-box" style="margin:0 auto 20px">MRZ</div><h1>Produk tidak ditemukan</h1><p class="muted">${escapeHtml(message || "Periksa kembali link yang digunakan.")}</p><button class="btn btn-primary" data-public-login>Masuk ke Member Area</button></div></div>`;
+    document.querySelector("[data-public-login]")?.addEventListener("click", () => renderLogin());
+  }
+
+  async function loadPublicProduct(route) {
+    state.publicLoading = true;
+    renderLoading();
+    try {
+      const data = await api({
+        action: "publicProduct",
+        slug: route.slug,
+        product_type: route.product_type || ""
+      });
+      state.publicLoading = false;
+      renderPublicProduct(data.product, data.settings || {});
+    } catch (error) {
+      state.publicLoading = false;
+      renderPublicError(error.message);
+    }
+  }
+
   function logout(showMessage = true) {
     localStorage.removeItem(STORAGE_KEY);
     state.token = "";
@@ -192,7 +432,8 @@
       if (!state.selectedNoteModule && state.modules[0]) state.selectedNoteModule = state.modules[0].module_id;
       saveSession();
       applyTheme();
-      renderApp();
+      const routed = await applyPublicDestinationAfterAuth();
+      if (!routed) renderApp();
     } catch (error) {
       localStorage.removeItem(STORAGE_KEY);
       state.token = "";
@@ -2528,6 +2769,7 @@
 
   async function init() {
     const resetToken = new URLSearchParams(window.location.search).get("reset_token");
+    state.publicRoute = parsePublicRoute();
 
     if (resetToken) {
       state.authMode = "reset-link";
@@ -2555,8 +2797,17 @@
       return;
     }
 
-    if (loadSession()) await bootstrap(true);
-    else renderLogin();
+    if (loadSession()) {
+      await bootstrap(true);
+      return;
+    }
+
+    if (state.publicRoute) {
+      await loadPublicProduct(state.publicRoute);
+      return;
+    }
+
+    renderLogin();
   }
 
   init();
