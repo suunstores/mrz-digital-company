@@ -521,7 +521,11 @@
   }
 
   function zoneDisplayLabel(zone) {
-    return [zone?.zone_no, zone?.zone_name].filter(value => String(value ?? "").trim()).join(" ");
+    const zoneNo = String(zone?.zone_no ?? "").trim();
+    const zoneName = String(zone?.zone_name ?? "").trim();
+    if (zoneNo && zoneName) return `Nomor ${zoneNo} ${zoneName}`;
+    if (zoneNo) return `Nomor ${zoneNo}`;
+    return zoneName || "Materi";
   }
 
   function uniqueZones() {
