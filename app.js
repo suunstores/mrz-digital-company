@@ -18,6 +18,7 @@
       SUPPORT_EMAIL: ""
     },
     modules: [],
+    zones: [],
     notes: [],
     schedule: [],
     announcements: [],
@@ -163,6 +164,7 @@
     state.user = null;
     state.authMode = "login";
     state.modules = [];
+    state.zones = [];
     state.notes = [];
     state.schedule = [];
     state.announcements = [];
@@ -181,6 +183,7 @@
       state.modules = Array.isArray(data.modules)
         ? data.modules.map(module => ({ ...module, zone_no: resolveZoneNo(module) }))
         : [];
+      state.zones = Array.isArray(data.zones) ? data.zones : [];
       state.notes = Array.isArray(data.notes) ? data.notes : [];
       state.schedule = Array.isArray(data.schedule) ? data.schedule : [];
       state.announcements = Array.isArray(data.announcements) ? data.announcements : [];
@@ -548,12 +551,13 @@
   function renderApp() {
     const zones = uniqueZones();
     const zoneNav = zones.map(zone => {
-      const view = `zone:${zone.zone_no}`;
-      const count = state.modules.filter(m => Number(resolveZoneNo(m)) === Number(zone.zone_no)).length;
+      const view = `zone:${zone.zone_id}`;
+      const count = Number(zone.module_count || state.modules.filter(m => String(m.zone_id || "") === String(zone.zone_id || "")).length);
+      const paidLocked = String(zone.access_type || "FREE").toUpperCase() === "PAID" && !zone.has_access;
       return `<button class="nav-item ${state.currentView === view ? "active" : ""}" data-view="${view}">
         ${zoneNumberBadge(zone.zone_no, "zone-nav-number")}
         <span>${escapeHtml(zoneDisplayLabel(zone))}</span>
-        <span class="nav-count">${count}</span>
+        <span class="nav-count">${paidLocked ? icons.lock : count}</span>
       </button>`;
     }).join("");
     const firstName = String(state.user?.name || "Member").split(" ")[0];
@@ -1994,7 +1998,7 @@
         payment_method: "TRANSFER",
         payment_reference: `ADMIN-${Date.now()}`
       });
-      toast(`Invoice ${invoiceNumber} berhasil dikonfirmasi. Akses tools sudah aktif.`);
+      toast(`Invoice ${invoiceNumber} berhasil dikonfirmasi. Akses produk sudah aktif.`);
       await loadAdminOperations(false);
     } catch (error) {
       toast(error.message, "error");
@@ -2175,6 +2179,9 @@
     document.querySelectorAll("[data-open-tool]").forEach(node => node.addEventListener("click", () => changeView(`tool:${node.dataset.openTool}`)));
     document.querySelectorAll("[data-tool-tab]").forEach(node => node.addEventListener("click", () => { state.toolTab = node.dataset.toolTab; renderApp(); }));
     document.querySelectorAll("[data-buy-tool]").forEach(node => node.addEventListener("click", () => startPurchase(node.dataset.buyTool)));
+    document.querySelectorAll("[data-buy-zone]").forEach(node => node.addEventListener("click", () => startZonePurchase(node.dataset.buyZone)));
+    document.querySelectorAll("[data-open-zone]").forEach(node => node.addEventListener("click", () => changeView(`zone:${node.dataset.openZone}`)));
+    document.querySelectorAll("[data-scroll-zone-modules]").forEach(node => node.addEventListener("click", () => document.getElementById("zone-modules")?.scrollIntoView({ behavior: "smooth", block: "start" })));
     document.querySelectorAll("[data-launch-tool]").forEach(node => node.addEventListener("click", () => launchTool(node.dataset.launchTool)));
     document.querySelectorAll("[data-open-tool-module]").forEach(node => node.addEventListener("click", () => openToolModule(node.dataset.openToolModule)));
     document.querySelectorAll("[data-complete-tool-module]").forEach(node => node.addEventListener("click", () => completeToolModule(node.dataset.completeToolModule)));
@@ -2246,6 +2253,277 @@
       }
     });
     if (state.currentView === "admin" && !state.adminLoading && !(state.adminData.orders || []).length) loadAdminOperations(true);
+  }
+
+
+  /** =====================================================
+   * ZONA ACADEMY TERPISAH — FREE / PAID
+   * ===================================================== */
+
+  function uniqueZones() {
+    if (Array.isArray(state.zones) && state.zones.length) {
+      return state.zones
+        .map(zone => ({
+          ...zone,
+          zone_id: String(zone.zone_id || "").trim(),
+          zone_no: resolveZoneNo(zone),
+          zone_name: String(zone.zone_name || "Materi").trim(),
+          access_type: String(zone.access_type || "FREE").toUpperCase(),
+          has_access: Boolean(zone.has_access)
+        }))
+        .sort((a, b) => Number(a.sort_order || a.zone_no || 9999) - Number(b.sort_order || b.zone_no || 9999));
+    }
+
+    const map = new Map();
+    state.modules.forEach(module => {
+      const zoneNo = resolveZoneNo(module);
+      const zoneId = String(module.zone_id || (zoneNo ? `ZONE-${zoneNo}` : "")).trim();
+      const zoneName = String(module.zone_name || "Materi").trim();
+      if (!zoneId) return;
+      if (!map.has(zoneId)) {
+        map.set(zoneId, {
+          zone_id: zoneId,
+          zone_no: zoneNo,
+          zone_name: zoneName,
+          access_type: "FREE",
+          has_access: true,
+          module_count: 0,
+          completed_count: 0
+        });
+      }
+      const zone = map.get(zoneId);
+      zone.module_count += 1;
+      if (module.is_completed) zone.completed_count += 1;
+    });
+    return [...map.values()].sort((a, b) => Number(a.zone_no || 9999) - Number(b.zone_no || 9999));
+  }
+
+  function viewTitle() {
+    if (state.currentView.startsWith("zone:")) {
+      const zoneId = state.currentView.split(":").slice(1).join(":");
+      const zone = uniqueZones().find(item => String(item.zone_id) === String(zoneId));
+      return zone ? zoneDisplayLabel(zone) : "Materi";
+    }
+    if (state.currentView.startsWith("tool:")) return state.currentToolDetail?.tool?.tool_name || "Detail Tools";
+    return ({
+      home: "Beranda",
+      tools: "Produk & Tools",
+      checklist: "Materi Belajar",
+      schedule: "Jadwal Konsultasi",
+      notes: "Catatan Saya",
+      profile: "Pengaturan Profil",
+      admin: "Pesanan & Akses"
+    })[state.currentView] || "Beranda";
+  }
+
+  function renderCurrentView() {
+    if (state.currentView === "home") return renderHome();
+    if (state.currentView === "tools") return renderTools();
+    if (state.currentView.startsWith("tool:")) return renderToolDetail();
+    if (state.currentView === "checklist") return renderChecklist();
+    if (state.currentView === "schedule") return renderSchedule();
+    if (state.currentView === "notes") return renderNotes();
+    if (state.currentView === "profile") return renderProfile();
+    if (state.currentView === "admin") return renderAdmin();
+    if (state.currentView.startsWith("zone:")) {
+      const zoneId = state.currentView.split(":").slice(1).join(":");
+      return renderZoneDetail(zoneId);
+    }
+    return renderHome();
+  }
+
+  function zoneStatusText(zone) {
+    if (String(zone.access_type || "FREE").toUpperCase() === "FREE") return "GRATIS";
+    return zone.has_access ? "AKSES AKTIF" : "BERBAYAR";
+  }
+
+  function zoneStatusClass(zone) {
+    if (String(zone.access_type || "FREE").toUpperCase() === "FREE" || zone.has_access) return "open";
+    return "locked";
+  }
+
+  function renderChecklist() {
+    const q = state.moduleSearch.trim().toLowerCase();
+    const zones = uniqueZones().filter(zone => {
+      if (!q) return true;
+      return `${zone.zone_name} ${zone.headline || ""} ${zone.description || ""}`.toLowerCase().includes(q);
+    });
+
+    return `
+      <style>
+        .zone-catalog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+        .zone-product-card{overflow:hidden;display:grid;grid-template-columns:180px 1fr;min-height:220px}
+        .zone-product-media{background:linear-gradient(145deg,#4b0e19,#7b1b2b);display:grid;place-items:center;overflow:hidden;min-height:220px}
+        .zone-product-media img{width:100%;height:100%;object-fit:cover}
+        .zone-product-placeholder{width:78px;height:78px;border-radius:24px;background:#f2d258;color:#5b101d;display:grid;place-items:center;font-size:32px;font-weight:900}
+        .zone-product-copy{padding:24px;display:flex;flex-direction:column;align-items:flex-start}
+        .zone-product-copy h2{margin:8px 0 8px}.zone-product-copy p{margin:0 0 18px;color:var(--muted);line-height:1.6}
+        .zone-product-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:auto;margin-bottom:14px}
+        .zone-product-price{font-size:20px;font-weight:900;color:var(--primary)}
+        @media(max-width:1000px){.zone-catalog-grid{grid-template-columns:1fr}.zone-product-card{grid-template-columns:150px 1fr}}
+        @media(max-width:620px){.zone-product-card{grid-template-columns:1fr}.zone-product-media{min-height:180px}}
+      </style>
+      <div class="page-head"><div><h1>Materi Belajar</h1><p>Setiap nomor adalah Zona yang terpisah. Progress dan aksesnya tidak tercampur.</p></div></div>
+      <section class="zone-catalog-grid">
+        ${zones.length ? zones.map(zone => {
+          const paidLocked = String(zone.access_type).toUpperCase() === "PAID" && !zone.has_access;
+          const price = Number(zone.sale_price || 0);
+          return `<article class="card zone-product-card">
+            <div class="zone-product-media">
+              ${zone.thumbnail_url ? `<img src="${escapeHtml(zone.thumbnail_url)}" alt="${escapeHtml(zone.zone_name)}" onerror="this.remove()">` : `<div class="zone-product-placeholder">${escapeHtml(zone.zone_no)}</div>`}
+            </div>
+            <div class="zone-product-copy">
+              <span class="access-badge ${zoneStatusClass(zone)}">${escapeHtml(zoneStatusText(zone))}</span>
+              <h2>${escapeHtml(zone.zone_name)}</h2>
+              <p>${escapeHtml(zone.subheadline || zone.description || "Buka Zona untuk melihat seluruh modul.")}</p>
+              <div class="zone-product-meta"><span>${Number(zone.module_count || 0)} modul</span><span>${Number(zone.completed_count || 0)} selesai</span></div>
+              ${paidLocked ? `<div class="zone-product-price">${formatCurrency(price)}</div>` : ""}
+              <button class="btn ${paidLocked ? "btn-accent" : "btn-primary"}" data-open-zone="${escapeHtml(zone.zone_id)}">${paidLocked ? `${icons.lock} Lihat Zona` : `Buka Zona ${icons.arrow}`}</button>
+            </div>
+          </article>`;
+        }).join("") : emptyState("Zona tidak ditemukan", q ? "Coba gunakan kata kunci lain." : "Isi dan aktifkan sheet ZONES terlebih dahulu.")}
+      </section>`;
+  }
+
+  function renderZoneDetail(zoneId) {
+    const zone = uniqueZones().find(item => String(item.zone_id) === String(zoneId));
+    if (!zone) return emptyState("Zona tidak ditemukan", "Periksa zone_id pada sheet ZONES dan MODULES.");
+
+    let modules = state.modules
+      .filter(module => String(module.zone_id || "") === String(zone.zone_id || ""))
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+
+    const q = state.moduleSearch.trim().toLowerCase();
+    if (q) modules = modules.filter(module => `${module.title} ${module.description}`.toLowerCase().includes(q));
+
+    const paidLocked = String(zone.access_type || "FREE").toUpperCase() === "PAID" && !zone.has_access;
+    const done = modules.filter(module => module.is_completed).length;
+    const total = modules.length;
+    const percent = total ? Math.round((done / total) * 100) : 0;
+
+    return `
+      <style>
+        .academy-zone-hero{display:grid;grid-template-columns:minmax(300px,44%) 1fr;overflow:hidden;margin-bottom:22px}
+        .academy-zone-visual{min-height:360px;background:linear-gradient(145deg,#4a0d18,#7a1a2b);display:grid;place-items:center;overflow:hidden}
+        .academy-zone-visual img{width:100%;height:100%;object-fit:cover}
+        .academy-zone-number{width:110px;height:110px;border-radius:32px;display:grid;place-items:center;background:#f2d258;color:#5b101d;font-size:52px;font-weight:900;box-shadow:0 20px 50px rgba(0,0,0,.22)}
+        .academy-zone-copy{padding:38px;display:flex;flex-direction:column;justify-content:center}
+        .academy-zone-copy h1{font-size:clamp(30px,4vw,52px);line-height:1.04;margin:12px 0}.academy-zone-copy p{font-size:16px;line-height:1.7;color:var(--muted)}
+        .academy-zone-price{display:flex;align-items:end;gap:12px;margin:18px 0}.academy-zone-price strong{font-size:30px;color:var(--primary)}
+        .academy-zone-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+        .zone-progress-card{padding:22px;margin-bottom:22px}.zone-progress-card .progress-track{margin-top:14px}
+        .zone-lock-notice{padding:18px 20px;margin-bottom:22px;border:1px solid rgba(201,162,39,.34);background:#fff8df;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+        @media(max-width:900px){.academy-zone-hero{grid-template-columns:1fr}.academy-zone-visual{min-height:260px}.academy-zone-copy{padding:26px}}
+      </style>
+      <div class="tool-page-head"><button class="back-link" data-view="checklist">← Kembali ke Materi Belajar</button><span class="access-badge ${zoneStatusClass(zone)}">${escapeHtml(zoneStatusText(zone))}</span></div>
+      <section class="card academy-zone-hero">
+        <div class="academy-zone-visual">
+          ${zone.thumbnail_url ? `<img src="${escapeHtml(zone.thumbnail_url)}" alt="${escapeHtml(zone.zone_name)}" onerror="this.remove()">` : `<div class="academy-zone-number">${escapeHtml(zone.zone_no)}</div>`}
+        </div>
+        <div class="academy-zone-copy">
+          <span class="hero-kicker">ZONA ${escapeHtml(zone.zone_no)} · ${escapeHtml(zone.access_type)}</span>
+          <h1>${escapeHtml(zone.headline || zone.zone_name)}</h1>
+          <p>${escapeHtml(zone.subheadline || zone.description || "Materi belajar MRZ Digital Academy.")}</p>
+          <div class="zone-product-meta"><span>${Number(zone.module_count || total)} modul</span>${Number(zone.preview_module_count || 0) > 0 && paidLocked ? `<span>${Number(zone.preview_module_count)} modul preview</span>` : ""}</div>
+          ${paidLocked ? `<div class="academy-zone-price"><del>${formatCurrency(zone.original_price)}</del><strong>${formatCurrency(zone.sale_price)}</strong></div>` : ""}
+          <div class="academy-zone-actions">
+            ${paidLocked ? `<button class="btn btn-accent" data-buy-zone="${escapeHtml(zone.zone_id)}">${escapeHtml(zone.purchase_label || "Beli Zona")} ${icons.cart}</button>` : `<button class="btn btn-primary" data-scroll-zone-modules>Mulai Belajar ${icons.arrow}</button>`}
+          </div>
+        </div>
+      </section>
+      ${paidLocked ? `<section class="card zone-lock-notice"><div><strong>Zona ini belum aktif</strong><p class="muted" style="margin:4px 0 0">Modul Zona ${escapeHtml(zone.zone_no)} terpisah dari Zona lain. Selesaikan pembelian untuk membuka semuanya.</p></div><button class="btn btn-accent" data-buy-zone="${escapeHtml(zone.zone_id)}">Beli Akses</button></section>` : `<section class="card zone-progress-card"><div class="progress-row"><div class="progress-title"><h2>Progress ${escapeHtml(zone.zone_name)}</h2><p>${done} dari ${total} modul selesai.</p></div><div class="progress-number"><strong>${percent}%</strong><span>TERSELESAIKAN</span></div></div><div class="progress-track"><div style="width:${Math.min(100, percent)}%"></div></div></section>`}
+      <section id="zone-modules">
+        <div class="section-head"><div><h2>Modul ${escapeHtml(zone.zone_name)}</h2><p>Hanya materi dari Zona ${escapeHtml(zone.zone_no)} yang tampil di halaman ini.</p></div></div>
+        <div class="module-grid">${modules.length ? modules.map(renderModuleCard).join("") : emptyState("Belum ada modul", q ? "Modul tidak cocok dengan pencarian." : "Isi MODULES dengan zone_id yang sama.")}</div>
+      </section>`;
+  }
+
+  function renderModuleCard(module) {
+    const busy = state.busyModules.has(module.module_id);
+    const purchaseLocked = module.is_locked && module.lock_reason === "PURCHASE";
+    const status = module.is_completed
+      ? "✓ Selesai"
+      : purchaseLocked
+        ? "Perlu beli Zona"
+        : module.is_locked
+          ? "Selesaikan modul sebelumnya"
+          : module.is_preview
+            ? "Preview gratis"
+            : "Siap dipelajari";
+
+    return `<article class="card module-card ${module.is_locked ? "locked" : ""}">
+      <div class="module-media">
+        ${module.thumbnail_url ? `<img src="${escapeHtml(module.thumbnail_url)}" alt="Thumbnail ${escapeHtml(module.title)}" onerror="this.remove()">` : ""}
+        <span class="module-index">${String(module.sort_order || "").padStart(2,"0")}</span>
+        ${module.is_locked ? `<span class="module-lock">${icons.lock}</span>` : `<span class="play-circle">${icons.play}</span>`}
+      </div>
+      <div class="module-body">
+        <div class="module-meta"><span class="module-status">${escapeHtml(status)}</span><span class="duration">${icons.clock} ${Number(module.duration_minutes || 0)} mnt</span></div>
+        <h3>${escapeHtml(module.title || "Modul belum diberi judul")}</h3><p>${escapeHtml(module.description || "")}</p>
+        <div class="module-actions">
+          <button class="btn ${module.is_locked ? "btn-outline" : "btn-primary"}" data-open-module="${escapeHtml(module.module_id)}" ${module.is_locked ? "disabled" : ""}>${module.is_locked ? `${icons.lock} ${purchaseLocked ? "Terkunci" : "Belum Terbuka"}` : `${icons.play} Tonton Video`}</button>
+          <button class="btn ${module.is_completed ? "complete-button completed" : "btn-outline"}" data-complete-module="${escapeHtml(module.module_id)}" ${module.is_locked || busy ? "disabled" : ""}>${busy ? "..." : module.is_completed ? `${icons.check} Selesai` : `${icons.check} Tandai`}</button>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  function startZonePurchase(zoneId) {
+    const zone = uniqueZones().find(item => String(item.zone_id) === String(zoneId));
+    if (!zone || zone.has_access || String(zone.access_type).toUpperCase() !== "PAID") return;
+
+    const modal = document.createElement("div");
+    modal.className = "modal-backdrop";
+    modal.id = "zone-purchase-modal";
+    modal.innerHTML = `<section class="modal purchase-modal">
+      <header class="modal-head"><div><span class="small muted">CHECKOUT ZONA ACADEMY</span><h2>${escapeHtml(zone.zone_name)}</h2></div><button class="icon-button" data-close-modal>${icons.close}</button></header>
+      <div class="modal-body purchase-body">
+        <div class="checkout-summary">
+          ${zone.thumbnail_url ? `<img src="${escapeHtml(zone.thumbnail_url)}" alt="">` : `<div class="academy-zone-number" style="width:86px;height:86px;font-size:36px;border-radius:22px">${escapeHtml(zone.zone_no)}</div>`}
+          <div><del>${formatCurrency(zone.original_price)}</del><strong>${formatCurrency(zone.sale_price)}</strong><p>Sekali bayar · membuka seluruh modul pada Zona ini</p></div>
+        </div>
+        <form id="zone-purchase-form">
+          <div class="form-group"><label>Nomor WhatsApp Anda</label><div class="input-wrap"><span class="input-icon">+</span><input name="phone" inputmode="tel" required value="${escapeHtml(state.user?.phone || "")}" placeholder="08xxxxxxxxxx"></div></div>
+          <div class="checkout-note">Setelah nomor booking dibuat, kirim bukti pembayaran melalui WhatsApp. Admin akan mengaktifkan akses khusus Zona ini.</div>
+          <button class="btn btn-accent btn-block" type="submit">Buat Pesanan ${icons.cart}</button>
+        </form>
+        <div id="zone-order-result"></div>
+      </div>
+    </section>`;
+
+    document.body.appendChild(modal);
+    modal.addEventListener("click", event => {
+      if (event.target === modal || event.target.closest("[data-close-modal]")) modal.remove();
+    });
+
+    modal.querySelector("#zone-purchase-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = form.querySelector("button[type=submit]");
+      const customerPhone = form.phone.value.trim();
+      button.disabled = true;
+      button.textContent = "Membuat nomor booking...";
+
+      try {
+        const data = await api({
+          action: "createOrder",
+          token: state.token,
+          product_type: "ZONE",
+          product_id: zone.zone_id,
+          zone_id: zone.zone_id,
+          phone: customerPhone
+        });
+        const invoiceNumber = data.order.invoice_number;
+        const orderAmount = data.order.amount;
+        modal.querySelector("#zone-order-result").innerHTML = `<div class="order-success"><span>✓</span><h3>Nomor Booking Berhasil Dibuat</h3><p>Zona: <strong>${escapeHtml(zone.zone_name)}</strong></p><p>Nomor Booking: <strong>${escapeHtml(invoiceNumber)}</strong></p><p>Total Pembayaran: <strong>${formatCurrency(orderAmount)}</strong></p><button type="button" class="btn btn-block" data-zone-payment-whatsapp style="margin-top:18px;background:#168a4f;color:#fff;border-color:#168a4f;display:flex;align-items:center;justify-content:center;gap:9px">${icons.whatsapp} Konfirmasi & Kirim Bukti via WhatsApp</button></div>`;
+        form.style.display = "none";
+        modal.querySelector("[data-zone-payment-whatsapp]").addEventListener("click", () => openPaymentWhatsApp(invoiceNumber, orderAmount, customerPhone));
+      } catch (error) {
+        toast(error.message, "error");
+        button.disabled = false;
+        button.innerHTML = `Buat Pesanan ${icons.cart}`;
+      }
+    });
   }
 
   async function init() {
