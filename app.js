@@ -521,11 +521,13 @@
   }
 
   function zoneDisplayLabel(zone) {
-    const zoneNo = String(zone?.zone_no ?? "").trim();
     const zoneName = String(zone?.zone_name ?? "").trim();
-    if (zoneNo && zoneName) return `Nomor ${zoneNo} ${zoneName}`;
-    if (zoneNo) return `Nomor ${zoneNo}`;
     return zoneName || "Materi";
+  }
+
+  function zoneNumberBadge(zoneNo, className = "zone-number-badge") {
+    const number = String(zoneNo ?? "").trim();
+    return number ? `<span class="${className}">${escapeHtml(number)}</span>` : "";
   }
 
   function uniqueZones() {
@@ -545,9 +547,55 @@
 
   function renderApp() {
     const zones = uniqueZones();
-    const zoneNav = zones.map(zone => navItem(`zone:${zone.zone_no}`, zoneDisplayLabel(zone), icons.book, state.modules.filter(m => Number(resolveZoneNo(m)) === Number(zone.zone_no)).length)).join("");
+    const zoneNav = zones.map(zone => {
+      const view = `zone:${zone.zone_no}`;
+      const count = state.modules.filter(m => Number(resolveZoneNo(m)) === Number(zone.zone_no)).length;
+      return `<button class="nav-item ${state.currentView === view ? "active" : ""}" data-view="${view}">
+        ${zoneNumberBadge(zone.zone_no, "zone-nav-number")}
+        <span>${escapeHtml(zoneDisplayLabel(zone))}</span>
+        <span class="nav-count">${count}</span>
+      </button>`;
+    }).join("");
     const firstName = String(state.user?.name || "Member").split(" ")[0];
     app.innerHTML = `
+      <style>
+        .zone-nav-number,
+        .zone-chip-number {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          font-weight: 800;
+          line-height: 1;
+          background: #f5e8bd;
+          color: #6e1423;
+          border: 1px solid rgba(201, 162, 39, .28);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
+        }
+        .zone-nav-number {
+          width: 26px;
+          height: 26px;
+          border-radius: 9px;
+          font-size: 12px;
+          margin-right: 1px;
+        }
+        .zone-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+        }
+        .zone-chip-number {
+          width: 22px;
+          height: 22px;
+          border-radius: 7px;
+          font-size: 11px;
+        }
+        .zone-chip.active .zone-chip-number {
+          background: #f4d96d;
+          color: #5d101d;
+          border-color: rgba(255,255,255,.2);
+        }
+      </style>
       <div class="app-shell">
         <div class="sidebar-overlay ${state.sidebarOpen ? "show" : ""}" id="sidebar-overlay"></div>
         <aside class="sidebar ${state.sidebarOpen ? "open" : ""}" id="sidebar">
@@ -1128,7 +1176,7 @@
         <div class="progress-row"><div class="progress-title"><h2>Progress Keseluruhan</h2><p>${state.progress.completed} dari ${state.progress.total} modul selesai.</p></div><div class="progress-number"><strong>${state.progress.percent}%</strong><span>TERSELESAIKAN</span></div></div>
         <div class="progress-track"><div style="width:${Math.min(100, Number(state.progress.percent || 0))}%"></div></div>
       </section>
-      <div class="zone-chips"><button class="zone-chip ${state.selectedZone === "all" ? "active" : ""}" data-zone="all">Semua Materi</button>${zones.map(z => `<button class="zone-chip ${String(state.selectedZone) === String(z.zone_no) ? "active" : ""}" data-zone="${z.zone_no}">${escapeHtml(zoneDisplayLabel(z))}</button>`).join("")}</div>
+      <div class="zone-chips"><button class="zone-chip ${state.selectedZone === "all" ? "active" : ""}" data-zone="all">Semua Materi</button>${zones.map(z => `<button class="zone-chip ${String(state.selectedZone) === String(z.zone_no) ? "active" : ""}" data-zone="${z.zone_no}">${zoneNumberBadge(z.zone_no, "zone-chip-number")}<span>${escapeHtml(zoneDisplayLabel(z))}</span></button>`).join("")}</div>
       ${modules.length ? [...grouped.entries()].map(([zoneNo, items]) => {
         const zone = zones.find(z => String(z.zone_no) === zoneNo);
         const done = items.filter(x => x.is_completed).length;
