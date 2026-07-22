@@ -867,17 +867,15 @@
     }).join("");
     const bonusNav = state.bonuses.map(bonus => {
       const locked = !state.bonusAccess || bonus.is_locked;
-      const status = locked ? icons.lock : icons.external;
+      const view = `bonus:${bonus.bonus_id}`;
       return `<button
-        class="nav-item bonus-nav-item ${locked ? "bonus-locked" : ""}"
-        data-bonus-id="${escapeHtml(bonus.bonus_id)}"
-        data-bonus-url="${escapeHtml(bonus.bonus_url || "")}"
-        data-bonus-locked="${locked ? "true" : "false"}"
+        class="nav-item bonus-nav-item ${locked ? "bonus-locked" : ""} ${state.currentView === view ? "active" : ""}"
+        data-bonus-view="${escapeHtml(view)}"
         title="${escapeHtml(bonus.description || bonus.bonus_name)}"
       >
         <span class="nav-icon">${icons.gift}</span>
         <span>${escapeHtml(bonus.bonus_name)}</span>
-        <span class="nav-count">${status}</span>
+        <span class="nav-count">${locked ? icons.lock : icons.arrow}</span>
       </button>`;
     }).join("");
     const firstName = String(state.user?.name || "Member").split(" ")[0];
@@ -2606,14 +2604,20 @@
     document.querySelectorAll("[data-open-module]").forEach(node => node.addEventListener("click", () => openModule(node.dataset.openModule)));
     document.querySelectorAll("[data-complete-module]").forEach(node => node.addEventListener("click", () => toggleComplete(node.dataset.completeModule)));
     document.querySelectorAll("[data-note-module]").forEach(node => node.addEventListener("click", () => { state.selectedNoteModule = node.dataset.noteModule; renderApp(); }));
-    document.querySelectorAll("[data-bonus-id]").forEach(node => node.addEventListener("click", () => {
-      const locked = node.dataset.bonusLocked === "true" || !state.bonusAccess;
-      if (locked) {
+    document.querySelectorAll("[data-bonus-view]").forEach(node => node.addEventListener("click", () => {
+      changeView(node.dataset.bonusView, { updateUrl: false });
+    }));
+    document.querySelectorAll("[data-open-bonus]").forEach(node => node.addEventListener("click", () => {
+      const bonusId = String(node.dataset.openBonus || "");
+      const bonus = state.bonuses.find(item => String(item.bonus_id) === bonusId);
+      const locked = !state.bonusAccess || bonus?.is_locked;
+
+      if (!bonus || locked) {
         toast("Bonus Member terbuka setelah kamu membeli minimal 1 produk dan status pesanan PAID.", "error");
         return;
       }
 
-      const url = String(node.dataset.bonusUrl || "").trim();
+      const url = String(bonus.bonus_url || "").trim();
       if (!url) {
         toast("Link bonus belum diisi oleh admin.", "error");
         return;
@@ -2737,6 +2741,11 @@
       return zone ? zoneDisplayLabel(zone) : "Materi";
     }
     if (state.currentView.startsWith("tool:")) return state.currentToolDetail?.tool?.tool_name || "Detail Tools";
+    if (state.currentView.startsWith("bonus:")) {
+      const bonusId = state.currentView.split(":").slice(1).join(":");
+      const bonus = state.bonuses.find(item => String(item.bonus_id) === String(bonusId));
+      return bonus?.bonus_name || "Bonus Member";
+    }
     return ({
       home: "Beranda",
       tools: "Produk & Tools",
@@ -2752,6 +2761,10 @@
     if (state.currentView === "home") return renderHome();
     if (state.currentView === "tools") return renderTools();
     if (state.currentView.startsWith("tool:")) return renderToolDetail();
+    if (state.currentView.startsWith("bonus:")) {
+      const bonusId = state.currentView.split(":").slice(1).join(":");
+      return renderBonusDetail(bonusId);
+    }
     if (state.currentView === "checklist") return renderChecklist();
     if (state.currentView === "schedule") return renderSchedule();
     if (state.currentView === "notes") return renderNotes();
@@ -2762,6 +2775,78 @@
       return renderZoneDetail(zoneId);
     }
     return renderHome();
+  }
+
+  function bonusTypeLabel(type) {
+    const value = String(type || "LINK").toUpperCase();
+    return ({ TOOL: "TOOLS BONUS", FILE: "FILE BONUS", VIDEO: "VIDEO BONUS", LINK: "LINK BONUS" })[value] || "BONUS MEMBER";
+  }
+
+  function renderBonusDetail(bonusId) {
+    const bonus = state.bonuses.find(item => String(item.bonus_id) === String(bonusId));
+    if (!bonus) return emptyState("Bonus tidak ditemukan", "Periksa bonus_id dan status is_active pada sheet BONUSES.");
+
+    const locked = !state.bonusAccess || bonus.is_locked;
+    const imageUrl = bonus.thumbnail_url ? assetUrl(bonus.thumbnail_url) : "";
+    const hasLink = Boolean(String(bonus.bonus_url || "").trim());
+
+    return `
+      <style>
+        .bonus-detail-page{display:grid;gap:20px}
+        .bonus-detail-hero{display:grid;grid-template-columns:minmax(300px,42%) minmax(0,1fr);overflow:hidden;min-height:460px}
+        .bonus-detail-media{background:linear-gradient(145deg,#4a0d18,#75172a);display:grid;place-items:center;overflow:hidden;min-height:460px}
+        .bonus-detail-media img{width:100%;height:100%;object-fit:cover}
+        .bonus-detail-placeholder{width:150px;height:150px;border-radius:42px;background:linear-gradient(135deg,#d4aa24,#f5d765);color:#651425;display:grid;place-items:center;box-shadow:0 24px 60px rgba(0,0,0,.23)}
+        .bonus-detail-placeholder svg{width:72px;height:72px}
+        .bonus-detail-copy{padding:46px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
+        .bonus-detail-copy h1{font-size:clamp(34px,4.5vw,58px);line-height:1.05;letter-spacing:-.04em;margin:13px 0 18px}
+        .bonus-detail-description{font-size:16px;line-height:1.85;color:var(--muted);white-space:pre-line;margin:0 0 24px;max-width:760px}
+        .bonus-detail-meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+        .bonus-detail-meta span{padding:8px 12px;border-radius:999px;background:var(--surface-soft);border:1px solid var(--line);font-size:11px;font-weight:800}
+        .bonus-access-note{display:flex;align-items:flex-start;gap:14px;padding:18px;border:1px solid rgba(201,162,39,.36);background:#fff8df;border-radius:16px;margin-bottom:22px;width:100%;max-width:760px}
+        .bonus-access-note .bonus-note-icon{width:42px;height:42px;flex:0 0 42px;border-radius:13px;background:#f2d258;color:#651425;display:grid;place-items:center}
+        .bonus-access-note strong{display:block;margin-bottom:5px}.bonus-access-note p{margin:0;color:var(--muted);font-size:13px;line-height:1.65}
+        .bonus-detail-actions{display:flex;gap:12px;flex-wrap:wrap}
+        @media(max-width:900px){.bonus-detail-hero{grid-template-columns:1fr}.bonus-detail-media{min-height:300px}.bonus-detail-copy{padding:30px 24px}}
+      </style>
+      <div class="bonus-detail-page">
+        <div class="tool-page-head">
+          <button class="back-link" data-view="home">← Kembali ke Beranda</button>
+          <span class="access-badge ${locked ? "locked" : "open"}">${locked ? "KHUSUS PELANGGAN" : "AKSES AKTIF"}</span>
+        </div>
+
+        <section class="card bonus-detail-hero">
+          <div class="bonus-detail-media">
+            ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(bonus.bonus_name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">` : ""}
+            <div class="bonus-detail-placeholder" style="${imageUrl ? "display:none" : "display:grid"}">${icons.gift}</div>
+          </div>
+          <div class="bonus-detail-copy">
+            <span class="hero-kicker">${escapeHtml(bonusTypeLabel(bonus.bonus_type))}</span>
+            <h1>${escapeHtml(bonus.bonus_name)}</h1>
+            <p class="bonus-detail-description">${escapeHtml(bonus.description || "Deskripsi bonus belum diisi oleh admin.")}</p>
+            <div class="bonus-detail-meta">
+              <span>Bonus eksklusif MRZ</span>
+              <span>${escapeHtml(String(bonus.bonus_type || "LINK").toUpperCase())}</span>
+            </div>
+
+            ${locked ? `
+              <div class="bonus-access-note">
+                <div class="bonus-note-icon">${icons.lock}</div>
+                <div><strong>Bonus belum terbuka</strong><p>Beli minimal satu Tools, Bundle, atau Course dan pastikan status pesanan sudah PAID. Setelah itu bonus ini otomatis aktif.</p></div>
+              </div>
+              <div class="bonus-detail-actions"><button class="btn btn-accent" data-view="tools">Lihat Produk & Tools ${icons.arrow}</button></div>
+            ` : `
+              <div class="bonus-access-note">
+                <div class="bonus-note-icon">${icons.check}</div>
+                <div><strong>Bonus siap digunakan</strong><p>Baca deskripsinya terlebih dahulu, lalu klik tombol di bawah untuk membuka fitur atau file bonus di tab baru.</p></div>
+              </div>
+              <div class="bonus-detail-actions">
+                <button class="btn btn-accent" data-open-bonus="${escapeHtml(bonus.bonus_id)}" ${hasLink ? "" : "disabled"}>${hasLink ? `Buka ${escapeHtml(bonus.bonus_name)} ${icons.external}` : "Link Bonus Belum Diisi"}</button>
+              </div>
+            `}
+          </div>
+        </section>
+      </div>`;
   }
 
   function zoneStatusText(zone) {
