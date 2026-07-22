@@ -23,6 +23,8 @@
     notes: [],
     schedule: [],
     announcements: [],
+    bonuses: [],
+    bonusAccess: false,
     tools: [],
     currentToolDetail: null,
     currentToolLoading: false,
@@ -82,6 +84,8 @@
     image: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m5 18 5-5 3 3 2-2 4 4"/></svg>`,
     userCircle: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>`,
     cart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M3 4h2l2.6 10.4a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.6L21 8H7"/></svg>`,
+    gift: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="9" width="18" height="12" rx="2"/><path d="M12 9v12M3 13h18M7.5 9C5.6 9 4 7.7 4 6.1 4 4.7 5.2 3.5 6.7 3.5 9.2 3.5 12 9 12 9S9.4 9 7.5 9ZM16.5 9C18.4 9 20 7.7 20 6.1c0-1.4-1.2-2.6-2.7-2.6C14.8 3.5 12 9 12 9s2.6 0 4.5 0Z"/></svg>`,
+    external: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>`,
     whatsapp: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.8 7.4L3 20.5l1.4-4.6A8.5 8.5 0 1 1 20.5 11.7Z"/><path d="M8.2 7.8c.2-.5.5-.5.8-.5h.5c.2 0 .4.1.5.4l.8 1.9c.1.3 0 .5-.1.7l-.6.8c-.2.2-.1.4 0 .6.8 1.4 1.9 2.5 3.4 3.2.2.1.4.1.6-.1l.9-1.1c.2-.2.4-.3.7-.2l1.9.9c.3.1.4.3.4.5 0 .3-.2 1.3-.8 1.8-.5.5-1.3.8-2 .8-.7 0-1.6-.2-2.6-.7-1.5-.7-2.8-1.7-3.9-3-1-1.1-1.8-2.4-2.1-3.4-.3-.9-.1-1.8.3-2.6.2-.4.6-.8 1.3-.8Z"/></svg>`
   };
 
@@ -464,6 +468,8 @@
     state.notes = [];
     state.schedule = [];
     state.announcements = [];
+    state.bonuses = [];
+    state.bonusAccess = false;
     state.tools = [];
     state.currentToolDetail = null;
     renderLogin();
@@ -483,6 +489,8 @@
       state.notes = Array.isArray(data.notes) ? data.notes : [];
       state.schedule = Array.isArray(data.schedule) ? data.schedule : [];
       state.announcements = Array.isArray(data.announcements) ? data.announcements : [];
+      state.bonuses = Array.isArray(data.bonuses) ? data.bonuses : [];
+      state.bonusAccess = Boolean(data.bonus_access);
       state.tools = Array.isArray(data.tools) ? data.tools : [];
       state.progress = data.progress || { completed: 0, total: 0, percent: 0 };
       if (!state.selectedNoteModule && state.modules[0]) state.selectedNoteModule = state.modules[0].module_id;
@@ -857,6 +865,21 @@
         <span class="nav-count">${paidLocked ? icons.lock : count}</span>
       </button>`;
     }).join("");
+    const bonusNav = state.bonuses.map(bonus => {
+      const locked = !state.bonusAccess || bonus.is_locked;
+      const status = locked ? icons.lock : icons.external;
+      return `<button
+        class="nav-item bonus-nav-item ${locked ? "bonus-locked" : ""}"
+        data-bonus-id="${escapeHtml(bonus.bonus_id)}"
+        data-bonus-url="${escapeHtml(bonus.bonus_url || "")}"
+        data-bonus-locked="${locked ? "true" : "false"}"
+        title="${escapeHtml(bonus.description || bonus.bonus_name)}"
+      >
+        <span class="nav-icon">${icons.gift}</span>
+        <span>${escapeHtml(bonus.bonus_name)}</span>
+        <span class="nav-count">${status}</span>
+      </button>`;
+    }).join("");
     const firstName = String(state.user?.name || "Member").split(" ")[0];
     app.innerHTML = `
       <style>
@@ -896,6 +919,17 @@
           color: #5d101d;
           border-color: rgba(255,255,255,.2);
         }
+        .bonus-nav-item .nav-count {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .bonus-nav-item.bonus-locked {
+          opacity: .72;
+        }
+        .bonus-nav-item:not(.bonus-locked) .nav-icon {
+          color: var(--accent);
+        }
       </style>
       <div class="app-shell">
         <div class="sidebar-overlay ${state.sidebarOpen ? "show" : ""}" id="sidebar-overlay"></div>
@@ -919,6 +953,11 @@
             <div class="nav-group">
               <div class="nav-label">Materi Belajar</div>
               ${zoneNav || `<div class="small muted" style="padding:10px">Belum ada modul.</div>`}
+            </div>
+            <div class="nav-group">
+              <div class="nav-label">Bonus Member</div>
+              ${bonusNav || `<div class="small muted" style="padding:10px">Belum ada bonus.</div>`}
+              ${state.bonuses.length && !state.bonusAccess ? `<div class="small muted" style="padding:7px 10px 0;line-height:1.5">Terbuka setelah membeli minimal 1 produk.</div>` : ""}
             </div>
             ${state.user?.role === "ADMIN" ? `<div class="nav-group"><div class="nav-label">Administrator</div>${navItem("admin", "Pesanan & Akses", icons.users)}</div>` : ""}
             <div class="nav-group">
@@ -2209,6 +2248,8 @@
           state.notes = [];
           state.schedule = [];
           state.announcements = [];
+          state.bonuses = [];
+          state.bonusAccess = false;
           state.tools = [];
           state.currentToolDetail = null;
 
@@ -2565,6 +2606,21 @@
     document.querySelectorAll("[data-open-module]").forEach(node => node.addEventListener("click", () => openModule(node.dataset.openModule)));
     document.querySelectorAll("[data-complete-module]").forEach(node => node.addEventListener("click", () => toggleComplete(node.dataset.completeModule)));
     document.querySelectorAll("[data-note-module]").forEach(node => node.addEventListener("click", () => { state.selectedNoteModule = node.dataset.noteModule; renderApp(); }));
+    document.querySelectorAll("[data-bonus-id]").forEach(node => node.addEventListener("click", () => {
+      const locked = node.dataset.bonusLocked === "true" || !state.bonusAccess;
+      if (locked) {
+        toast("Bonus Member terbuka setelah kamu membeli minimal 1 produk dan status pesanan PAID.", "error");
+        return;
+      }
+
+      const url = String(node.dataset.bonusUrl || "").trim();
+      if (!url) {
+        toast("Link bonus belum diisi oleh admin.", "error");
+        return;
+      }
+
+      window.open(url, "_blank", "noopener,noreferrer");
+    }));
     document.querySelectorAll("[data-external]").forEach(node => node.addEventListener("click", () => openExternal(node.dataset.external)));
     document.getElementById("profile-settings-button")?.addEventListener("click", () => {
       state.currentView = "profile";
